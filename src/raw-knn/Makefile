@@ -1,4 +1,7 @@
 
+# gzstream.C gzstream.h is from gzstream
+# annoylib.h mman.h kissrandom.h
+
 CXX      = g++  
 CPPFLAGS = -I. -O -std=c++11 -Wall
 LDFLAGS  = -L. -lgzstream -lz
