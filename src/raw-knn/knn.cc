@@ -5,6 +5,7 @@
 #include<sstream>
 #include<chrono>
 #include<cstring>
+#include<cmath>
 #include<vector>
 
 // unix api
@@ -205,6 +206,9 @@ public:
 vector<Sample*> read_samples_from_files(const vector<string>& filenames, const int feature_size, const bool use_gzip) {
 	vector<string> buffer;
 	vector<Sample*> batch;
+	string reading_msg = "Loading files ...";
+	DEBUG_VALUE(reading_msg);
+	int i = 0;
 	for (auto fn: filenames) {
 		buffer.clear();
 		read_from_file(fn, buffer, use_gzip);
@@ -212,6 +216,11 @@ vector<Sample*> read_samples_from_files(const vector<string>& filenames, const i
 			Sample* item = new Sample(s, feature_size);
 			batch.push_back(item);
 		}
+		if (i % 10 == 9) {
+			float loaded_percent = (float) (i + 1) / filenames.size();
+			DEBUG_VALUE(loaded_percent);
+		}
+		i ++;
 	}
 	return batch;
 }
@@ -279,8 +288,109 @@ AINDEX* build_trees(const vector<Sample*>& samples, const int feature_size, cons
 
 AINDEX* load_trees(const int feature_size, const string& tree_file) {
 	AINDEX* index = new AINDEX(feature_size);
+	string loading_msg = "Loading trees ... be patient ...";
+	DEBUG_VALUE(loading_msg);
+
 	index->load(tree_file.c_str());
+
+	loading_msg = "Done";
+	DEBUG_VALUE(loading_msg);
 	return index;
+}
+
+
+#define PIF pair<int, float>
+bool reverse_pif(const PIF& a, const PIF& b) {return a.second > b.second;}
+
+// pair should be sorted reversely
+vector<pair<int, float>> get_topk_predictions(const Sample* sample, AINDEX* index, const unordered_map<int, vector<int>>& labels, int top_k = 20, int nearest_n = 40) {
+	vector<int> prediction;
+	vector<float> distance;
+	index->get_nns_by_vector(sample->get_features(), nearest_n, nearest_n * 80, &prediction, &distance);
+
+	// weighted voting
+	unordered_map<int, float> ballot;
+	float total_count = 0;
+	int i = 0;
+	for (auto item: prediction) {
+		if (labels.count(item)) {
+			float weight = 1.0 / (1 + distance[i]);
+			for (auto l: labels.at(item)) {
+				ballot[l] += weight;
+				total_count += weight;
+			}
+		}
+		i ++;
+	}
+
+	vector<pair<int,float>> label_votes;
+	for (auto it = ballot.begin(); it != ballot.end(); it++) {
+		label_votes.push_back(make_pair(it->first, (float) (it->second) / total_count));
+	}
+	if (top_k > label_votes.size()) {
+		top_k = label_votes.size();
+	}
+	partial_sort(label_votes.begin(), label_votes.begin() + top_k, label_votes.end(), reverse_pif);
+	label_votes.resize(top_k);
+	return label_votes;
+}
+
+float compute_sample_GAP(const Sample* sample, AINDEX* index, const unordered_map<int, vector<int>>& labels, const int top_k = 20) {
+	vector<pair<int, float>> topk_items = get_topk_predictions(sample, index, labels, top_k);
+	auto truth = sample->get_labels();
+	float gap = 0;
+	if (truth.size() > 0) {
+		int right_at_i = 0;
+		int count_at_i = 0;
+		float delta_recall;
+		if (truth.size() > top_k) {
+			delta_recall = 1.0 / top_k;
+		} else {
+			delta_recall = 1.0 / truth.size();
+		}
+		for (int i = 0; i < topk_items.size(); i++) {
+
+			int prediction_at_i = topk_items.at(i).first;
+			bool is_right = false;
+			for (auto item: truth) {
+				if (item == prediction_at_i) {
+					is_right = true;
+				}
+			}
+			if (is_right) {
+				right_at_i ++;
+			}
+			count_at_i ++;
+
+			float precision_at_i = (float) right_at_i / count_at_i;
+
+			if (is_right) {
+				gap += precision_at_i * delta_recall;
+			}
+		}
+	}
+	return gap;
+}
+
+float compute_batch_GAP(const vector<Sample*>& samples, AINDEX* index, const unordered_map<int, vector<int>>& labels) {
+	int total_count = 0;
+	float total_gap = 0;
+	string compute_msg = "Computing GAP ...";
+	DEBUG_VALUE(compute_msg);
+	int i = 0;
+	for (Sample* sample: samples) {
+		float sample_gap = compute_sample_GAP(sample, index, labels);
+		if (sample_gap >= 0) {
+			total_gap += sample_gap;
+			total_count ++;
+		}
+		if (i % 10000 == 999) {
+			float loaded_percent = (float) (i + 1) / samples.size();
+			DEBUG_VALUE(loaded_percent);
+		}
+		i ++;
+	}
+	return total_gap / total_count;
 }
 
 int main(int argc, char* argv[]) {
@@ -315,6 +425,9 @@ int main(int argc, char* argv[]) {
 				unordered_map<int, vector<int>> labels;
 				load_sample_labels(labels, tree_file + ".label");
 				// compute GAP
+				vector<Sample*> validate_samples = read_samples_from_files(validate_filenames, feature_size, use_gzip);
+				float validation_gap = compute_batch_GAP(validate_samples, index, labels);
+				DEBUG_VALUE(validation_gap);
 			} else {
 				cerr << "validate_pattern needed" << endl;
 			}
