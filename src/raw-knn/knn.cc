@@ -7,6 +7,7 @@
 #include<cstring>
 #include<cmath>
 #include<vector>
+#include<future>
 
 // unix api
 #include<dirent.h>
@@ -71,7 +72,8 @@ int parse_argument(
 		int& feature_size,
 		int& tree_num,
 		string& tree_file,
-		string& task
+		string& task,
+		string& out_file
 		) {
 	unsigned i = 0;
 	while (i < args.size()) {
@@ -87,6 +89,7 @@ int parse_argument(
 				 << "       --test test_filepattern" << endl
 				 << "       --feature_size [1024]" << endl
 				 << "       --tree_file [tmp.tree]" << endl
+				 << "       --out_file [prediction.csv]" << endl
 				 << "       --tree_num 20" << endl;
 			return 0;
 		} else if (args.at(i) == "--task") {
@@ -96,6 +99,10 @@ int parse_argument(
 		} else if (args.at(i) == "--tree_num") {
 			if (i + 1 < args.size()) 
 				tree_num = stoi(args.at(i + 1));
+			i += 2;
+		} else if (args.at(i) == "--out_file") {
+			if (i + 1 < args.size()) 
+				out_file = args.at(i + 1);
 			i += 2;
 		} else if (args.at(i) == "--tree_file") {
 			if (i + 1 < args.size()) 
@@ -156,12 +163,14 @@ class Sample {
 protected:
 	vector<int> labels;
 	float *features;
+	string video_id;
 	int feature_size;
 public:
 	Sample(const string& string_sample, const int feature_size) {
 		this->features = NULL;
 		this->feature_size = feature_size;
 		stringstream ss(string_sample);
+		getline(ss, video_id, '\t');
 		int l_size;
 		int f_size;
 		ss >> l_size;
@@ -183,6 +192,7 @@ public:
 
 	Sample(const Sample& sample) {
 		this->labels = sample.labels;
+		this->video_id = sample.video_id;
 		this->feature_size = sample.feature_size;
 		if (sample.features != NULL && sample.feature_size > 0) {
 			this->features = new float[feature_size];
@@ -196,6 +206,10 @@ public:
 
 	const vector<int>& get_labels() const {
 		return this->labels;
+	}
+
+	const string& get_video_id() const {
+		return this->video_id;
 	}
 
 	~Sample() {
@@ -306,7 +320,7 @@ bool reverse_pif(const PIF& a, const PIF& b) {return a.second > b.second;}
 vector<pair<int, float>> get_topk_predictions(const Sample* sample, AINDEX* index, const unordered_map<int, vector<int>>& labels, int top_k = 20, int nearest_n = 40) {
 	vector<int> prediction;
 	vector<float> distance;
-	index->get_nns_by_vector(sample->get_features(), nearest_n, nearest_n * 80, &prediction, &distance);
+	index->get_nns_by_vector(sample->get_features(), nearest_n, nearest_n * 100, &prediction, &distance);
 
 	// weighted voting
 	unordered_map<int, float> ballot;
@@ -314,7 +328,7 @@ vector<pair<int, float>> get_topk_predictions(const Sample* sample, AINDEX* inde
 	int i = 0;
 	for (auto item: prediction) {
 		if (labels.count(item)) {
-			float weight = 1.0 / (1 + distance[i]);
+			float weight = 1.0 / (1 + distance[i] * distance[i]);
 			for (auto l: labels.at(item)) {
 				ballot[l] += weight;
 				total_count += weight;
@@ -372,6 +386,22 @@ float compute_sample_GAP(const Sample* sample, AINDEX* index, const unordered_ma
 	return gap;
 }
 
+void batch_prediction(const string& out_file, const vector<Sample*>& samples, AINDEX* index, const unordered_map<int, vector<int>>& labels, const int top_k = 20) {
+	string compute_msg = "Predicting ...";
+	DEBUG_VALUE(compute_msg);
+	int i = 0;
+	fstream out(out_file, ios::out);
+	for (Sample* sample: samples) {
+		vector<pair<int, float>> topk_items = get_topk_predictions(sample, index, labels, top_k);
+		out << sample->get_video_id();
+		for (auto p: topk_items) {
+			out << " " << p.first << " " << p.second;
+		}
+		out << endl;
+	}
+	out.close();
+}
+
 float compute_batch_GAP(const vector<Sample*>& samples, AINDEX* index, const unordered_map<int, vector<int>>& labels) {
 	int total_count = 0;
 	float total_gap = 0;
@@ -402,12 +432,13 @@ int main(int argc, char* argv[]) {
 	int tree_num = 20;
 	string tree_file = "tmp.tree";
 	string task = "train";
+	string out_file = "prediction.scv";
 
 	vector<string> args;
 	for (int i = 0; i < argc; i++) {
 		args.push_back(argv[i]);
 	}
-	if (parse_argument(args, use_gzip, train_pattern, validate_pattern, test_pattern, feature_size, tree_num, tree_file, task)) {
+	if (parse_argument(args, use_gzip, train_pattern, validate_pattern, test_pattern, feature_size, tree_num, tree_file, task, out_file)) {
 		if (task == "train") {
 			if (train_pattern != "") {
 				auto train_filenames = get_files(train_pattern);
@@ -439,6 +470,8 @@ int main(int argc, char* argv[]) {
 				unordered_map<int, vector<int>> labels;
 				load_sample_labels(labels, tree_file + ".label");
 				// get predictions
+				vector<Sample*> test_samples = read_samples_from_files(test_filenames, feature_size, use_gzip);
+				batch_prediction(out_file, test_samples, index, labels);
 			} else {
 				cerr << "test_pattern needed" << endl;
 			}

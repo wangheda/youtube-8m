@@ -27,7 +27,7 @@ def read_and_decode_single_example(filepattern, additional_features, feature_siz
 
 	features = tf.parse_single_example(serialized_example, feature_map)
 	concat_feature = tf.concat([features[name] for name in additional_features], axis = 0)
-	return features["labels"].values, concat_feature
+	return features["video_id"], features["labels"].values, concat_feature
 
 if __name__ == "__main__":
 
@@ -40,7 +40,7 @@ if __name__ == "__main__":
 		sys.exit("Usage: python %s filepattern additional_features feature_sizes")
 
 	with tf.Session() as sess:
-		label, feature = read_and_decode_single_example(filepattern, additional_features, feature_sizes)
+		video_id, label, feature = read_and_decode_single_example(filepattern, additional_features, feature_sizes)
 		global_init = tf.variables_initializer(tf.global_variables(), name = "global_init")
 		local_init = tf.variables_initializer(tf.local_variables(), name = "local_init")
 		sess.run(global_init)
@@ -48,13 +48,11 @@ if __name__ == "__main__":
 		tf.train.start_queue_runners(sess = sess)
 		i = 0
 		while True:
-			l_val, f_val = sess.run([label, feature])
+			v_id, l_val, f_val = sess.run([video_id, label, feature])
 			l_list = l_val.flatten().tolist()
 			f_list = f_val.flatten().tolist()
 			l_len = len(l_list)
 			f_len = len(f_list)
-			string = "%d %s %d %s" % (
-					l_len, " ".join(map(str, l_list)),
-					f_len, " ".join(map(str, f_list)),
-					)
+			string = "%s\t%d %s %d %s" % (v_id, l_len, " ".join(map(str, l_list)), f_len, " ".join(map(str, f_list)))
 			print string
+
