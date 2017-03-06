@@ -3,8 +3,8 @@
 # annoylib.h mman.h kissrandom.h
 
 CXX      = g++  
-CPPFLAGS = -I. -O -std=c++11 -Wall
-LDFLAGS  = -L. -lgzstream -lz
+CPPFLAGS = -I. -O -std=c++11 -Wall -pthread
+LDFLAGS  = -L. -lgzstream -lz -lpthread -lm
 AR       = ar cr
 
 all: libgzstream.a knn_tool

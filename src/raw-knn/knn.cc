@@ -36,6 +36,7 @@ vector<string> get_files(const string& file_pattern) {
 			dir_name = ".";
 			base_name = file_pattern;
 		}
+
 		if ((star_pos = base_name.find('*')) != string::npos) {
 			string prefix = base_name.substr(0, star_pos);
 			string postfix = base_name.substr(star_pos + 1);
@@ -71,6 +72,7 @@ int parse_argument(
 		string& test_pattern,
 		int& feature_size,
 		int& tree_num,
+		int& job_count,
 		string& tree_file,
 		string& task,
 		string& out_file
@@ -90,7 +92,8 @@ int parse_argument(
 				 << "       --feature_size [1024]" << endl
 				 << "       --tree_file [tmp.tree]" << endl
 				 << "       --out_file [prediction.csv]" << endl
-				 << "       --tree_num 20" << endl;
+				 << "       --job [8]" << endl
+				 << "       --tree_num [20]" << endl;
 			return 0;
 		} else if (args.at(i) == "--task") {
 			if (i + 1 < args.size()) 
@@ -107,6 +110,10 @@ int parse_argument(
 		} else if (args.at(i) == "--tree_file") {
 			if (i + 1 < args.size()) 
 				tree_file = args.at(i + 1);
+			i += 2;
+		} else if (args.at(i) == "--job") {
+			if (i + 1 < args.size()) 
+				job_count = stoi(args.at(i + 1));
 			i += 2;
 		} else if (args.at(i) == "--feature_size") {
 			if (i + 1 < args.size()) 
@@ -371,57 +378,129 @@ float compute_sample_GAP(const Sample* sample, AINDEX* index, const unordered_ma
 					is_right = true;
 				}
 			}
+			count_at_i ++;
 			if (is_right) {
 				right_at_i ++;
-			}
-			count_at_i ++;
-
-			float precision_at_i = (float) right_at_i / count_at_i;
-
-			if (is_right) {
-				gap += precision_at_i * delta_recall;
+				gap += (float) right_at_i / count_at_i * delta_recall;
 			}
 		}
 	}
 	return gap;
 }
 
-void batch_prediction(const string& out_file, const vector<Sample*>& samples, AINDEX* index, const unordered_map<int, vector<int>>& labels, const int top_k = 20) {
-	string compute_msg = "Predicting ...";
-	DEBUG_VALUE(compute_msg);
-	int i = 0;
-	fstream out(out_file, ios::out);
+vector<string>* batch_prediction(const vector<Sample*> samples, AINDEX* index, const unordered_map<int, vector<int>>& labels, const int top_k = 20) {
+	vector<string>* ret = new vector<string>;
 	for (Sample* sample: samples) {
+		stringstream out;
 		vector<pair<int, float>> topk_items = get_topk_predictions(sample, index, labels, top_k);
-		out << sample->get_video_id();
+		out << sample->get_video_id() << ",";
 		for (auto p: topk_items) {
-			out << " " << p.first << " " << p.second;
+			out << p.first << " " << p.second << " ";
 		}
 		out << endl;
+		ret->push_back(out.str());
 	}
-	out.close();
+	return ret;
 }
 
-float compute_batch_GAP(const vector<Sample*>& samples, AINDEX* index, const unordered_map<int, vector<int>>& labels) {
-	int total_count = 0;
-	float total_gap = 0;
-	string compute_msg = "Computing GAP ...";
-	DEBUG_VALUE(compute_msg);
-	int i = 0;
+void parallel_prediction(const string& filename, const vector<Sample*>& samples, AINDEX* index, const unordered_map<int, vector<int>>& labels, const int top_k = 20, const int job_count = 8, const int shard_size = 512) {
+	vector<vector<Sample*>> batches;
+
+	// sharding
+	vector<Sample*> shard;
 	for (Sample* sample: samples) {
-		float sample_gap = compute_sample_GAP(sample, index, labels);
+		if (shard.size() >= shard_size) {
+			batches.push_back(shard);
+			shard.clear();
+		}
+		shard.push_back(sample);
+	}
+	if (shard.size() > 0) {
+		batches.push_back(shard);
+	}
+
+	string compute_msg = "Predicting ...";
+	DEBUG_VALUE(compute_msg);
+
+	fstream out(filename, ios::out);
+	out << "VideoId,LabelConfidencePairs" << endl;
+	vector<future<vector<string>*>> fut;
+	int count = 0;
+	while (batches.size() > 0) {
+		while (fut.size() < job_count && batches.size() > 0) {
+			auto s = batches.back();
+			batches.pop_back();
+			fut.push_back(async(launch::async, batch_prediction, s, index, labels, top_k));
+			count += s.size();
+		}
+		for (auto it = fut.begin(); it != fut.end(); it++) {
+			it->wait();
+			vector<string>* p = it->get();
+			for (auto s: *p) {
+				out << s;
+			}
+			delete p;
+		}
+		fut.clear();
+		float computed_percentage = (float) count / samples.size();
+		DEBUG_VALUE(computed_percentage);
+	}
+}
+
+float compute_batch_GAP_sum(const vector<Sample*> samples, AINDEX* index, const unordered_map<int, vector<int>>& labels, const int top_k = 20) {
+	float total_gap = 0;
+	for (Sample* sample: samples) {
+		float sample_gap = compute_sample_GAP(sample, index, labels, top_k);
 		if (sample_gap >= 0) {
 			total_gap += sample_gap;
-			total_count ++;
 		}
-		if (i % 10000 == 999) {
-			float loaded_percent = (float) (i + 1) / samples.size();
-			DEBUG_VALUE(loaded_percent);
-		}
-		i ++;
 	}
-	return total_gap / total_count;
+	return total_gap;
 }
+
+
+float compute_parallel_GAP(const vector<Sample*>& samples, AINDEX* index, const unordered_map<int, vector<int>>& labels, const int top_k = 20, const int job_count = 8, const int shard_size = 512) {
+	vector<vector<Sample*>> batches;
+
+	// sharding
+	vector<Sample*> shard;
+	for (Sample* sample: samples) {
+		if (shard.size() >= shard_size) {
+			batches.push_back(shard);
+			shard.clear();
+		}
+		shard.push_back(sample);
+	}
+	if (shard.size() > 0) {
+		batches.push_back(shard);
+	}
+
+	string compute_msg = "Computing GAP ...";
+	DEBUG_VALUE(compute_msg);
+
+	// get GAP
+	float total_gap = 0;
+	int count = 0;
+	vector<future<float>> fut;
+	while (batches.size() > 0) {
+		while (fut.size() < job_count && batches.size() > 0) {
+			auto s = batches.back();
+			batches.pop_back();
+			fut.push_back(async(launch::async, compute_batch_GAP_sum, s, index, labels, top_k));
+			count += s.size();
+		}
+		for (auto it = fut.begin(); it != fut.end(); it++) {
+			it->wait();
+			total_gap += it->get();
+		}
+		fut.clear();
+		float computed_percentage = (float) count / samples.size();
+		DEBUG_VALUE(computed_percentage);
+	}
+	return total_gap / samples.size();
+}
+
+
 
 int main(int argc, char* argv[]) {
 	bool use_gzip = false;
@@ -430,6 +509,7 @@ int main(int argc, char* argv[]) {
 	string test_pattern = "";
 	int feature_size = 1024;
 	int tree_num = 20;
+	int job_count = 8;
 	string tree_file = "tmp.tree";
 	string task = "train";
 	string out_file = "prediction.scv";
@@ -438,7 +518,7 @@ int main(int argc, char* argv[]) {
 	for (int i = 0; i < argc; i++) {
 		args.push_back(argv[i]);
 	}
-	if (parse_argument(args, use_gzip, train_pattern, validate_pattern, test_pattern, feature_size, tree_num, tree_file, task, out_file)) {
+	if (parse_argument(args, use_gzip, train_pattern, validate_pattern, test_pattern, feature_size, tree_num, job_count, tree_file, task, out_file)) {
 		if (task == "train") {
 			if (train_pattern != "") {
 				auto train_filenames = get_files(train_pattern);
@@ -457,7 +537,7 @@ int main(int argc, char* argv[]) {
 				load_sample_labels(labels, tree_file + ".label");
 				// compute GAP
 				vector<Sample*> validate_samples = read_samples_from_files(validate_filenames, feature_size, use_gzip);
-				float validation_gap = compute_batch_GAP(validate_samples, index, labels);
+				float validation_gap = compute_parallel_GAP(validate_samples, index, labels, 20, job_count);
 				DEBUG_VALUE(validation_gap);
 			} else {
 				cerr << "validate_pattern needed" << endl;
@@ -471,7 +551,7 @@ int main(int argc, char* argv[]) {
 				load_sample_labels(labels, tree_file + ".label");
 				// get predictions
 				vector<Sample*> test_samples = read_samples_from_files(test_filenames, feature_size, use_gzip);
-				batch_prediction(out_file, test_samples, index, labels);
+				parallel_prediction(out_file, test_samples, index, labels, 20, job_count);
 			} else {
 				cerr << "test_pattern needed" << endl;
 			}
