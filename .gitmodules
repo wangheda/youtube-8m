@@ -1,9 +1,3 @@
-[submodule "youtube-8m-starter"]
-	path = youtube-8m-starter
-	url = git@github.com:tensorflow/tensorflow.git
-[submodule "tensorflow"]
-	path = tensorflow
-	url = git@github.com:tensorflow/tensorflow.git
 [submodule "3rd_party/annoy"]
 	path = 3rd_party/annoy
 	url = git@github.com:spotify/annoy.git
