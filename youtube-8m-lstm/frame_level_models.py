@@ -318,7 +318,7 @@ class LstmWithPoolingModel(models.BaseModel):
                                          time_major=False,
                                          dtype=tf.float32)
       pooling_output = tf.reduce_mean(outputs, axis = 1)
-      final_output = tf.concat([pooling_outputs, state], axis = 1)
+      final_output = tf.concat([pooling_output, state], axis = 1)
 
     aggregated_model = getattr(video_level_models,
                                FLAGS.video_level_classifier_model)
