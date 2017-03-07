@@ -46,6 +46,8 @@ flags.DEFINE_string("video_level_classifier_model", "MoeModel",
                     "classifier layer")
 flags.DEFINE_integer("lstm_cells", 1024, "Number of LSTM cells.")
 flags.DEFINE_integer("lstm_layers", 2, "Number of LSTM layers.")
+flags.DEFINE_integer("gru_cells", 1024, "Number of GRU cells.")
+flags.DEFINE_integer("gru_layers", 2, "Number of GRU layers.")
 
 class FrameLevelLogisticModel(models.BaseModel):
 
@@ -233,5 +235,181 @@ class LstmModel(models.BaseModel):
                                FLAGS.video_level_classifier_model)
     return aggregated_model().create_model(
         model_input=state,
+        vocab_size=vocab_size,
+        **unused_params)
+
+class LstmPoolingModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    """Creates a model which uses a stack of LSTMs to represent the video.
+
+    Args:
+      model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                   input features.
+      vocab_size: The number of classes in the dataset.
+      num_frames: A vector of length 'batch' which indicates the number of
+           frames for each video (before padding).
+
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      'batch_size' x 'num_classes'.
+    """
+    lstm_size = FLAGS.lstm_cells
+    number_of_layers = FLAGS.lstm_layers
+
+    ## Batch normalize the input
+    stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=False)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
+
+    loss = 0.0
+    with tf.variable_scope("RNN"):
+      outputs, state = tf.nn.dynamic_rnn(stacked_lstm, model_input,
+                                         sequence_length=num_frames,
+                                         time_major=False,
+                                         dtype=tf.float32)
+      pooling_output = tf.reduce_mean(outputs, axis = 1)
+
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
+    return aggregated_model().create_model(
+        model_input=pooling_output,
+        vocab_size=vocab_size,
+        **unused_params)
+
+class LstmWithPoolingModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    """Creates a model which uses a stack of LSTMs to represent the video.
+
+    Args:
+      model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                   input features.
+      vocab_size: The number of classes in the dataset.
+      num_frames: A vector of length 'batch' which indicates the number of
+           frames for each video (before padding).
+
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      'batch_size' x 'num_classes'.
+    """
+    lstm_size = FLAGS.lstm_cells
+    number_of_layers = FLAGS.lstm_layers
+
+    ## Batch normalize the input
+    stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=False)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
+
+    loss = 0.0
+    with tf.variable_scope("RNN"):
+      outputs, state = tf.nn.dynamic_rnn(stacked_lstm, model_input,
+                                         sequence_length=num_frames,
+                                         time_major=False,
+                                         dtype=tf.float32)
+      pooling_output = tf.reduce_mean(outputs, axis = 1)
+      final_output = tf.concat([pooling_outputs, state], axis = 1)
+
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
+    return aggregated_model().create_model(
+        model_input=final_output,
+        vocab_size=vocab_size,
+        **unused_params)
+
+class GruPoolingModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    """Creates a model which uses a stack of LSTMs to represent the video.
+
+    Args:
+      model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                   input features.
+      vocab_size: The number of classes in the dataset.
+      num_frames: A vector of length 'batch' which indicates the number of
+           frames for each video (before padding).
+
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      'batch_size' x 'num_classes'.
+    """
+    gru_size = FLAGS.gru_cells
+    number_of_layers = FLAGS.gru_layers
+
+    ## Batch normalize the input
+    stacked_gru = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.GRUCell(gru_size)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
+
+    loss = 0.0
+    with tf.variable_scope("RNN"):
+      outputs, state = tf.nn.dynamic_rnn(stacked_gru, model_input,
+                                         sequence_length=num_frames,
+                                         time_major=False,
+                                         dtype=tf.float32)
+      pooling_output = tf.reduce_mean(outputs, axis=1)
+
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
+    return aggregated_model().create_model(
+        model_input=pooling_output,
+        vocab_size=vocab_size,
+        **unused_params)
+
+class GruWithPoolingModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    """Creates a model which uses a stack of LSTMs to represent the video.
+
+    Args:
+      model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                   input features.
+      vocab_size: The number of classes in the dataset.
+      num_frames: A vector of length 'batch' which indicates the number of
+           frames for each video (before padding).
+
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      'batch_size' x 'num_classes'.
+    """
+    gru_size = FLAGS.gru_cells
+    number_of_layers = FLAGS.gru_layers
+
+    ## Batch normalize the input
+    stacked_gru = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.GRUCell(gru_size)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
+
+    loss = 0.0
+    with tf.variable_scope("RNN"):
+      outputs, state = tf.nn.dynamic_rnn(stacked_gru, model_input,
+                                         sequence_length=num_frames,
+                                         time_major=False,
+                                         dtype=tf.float32)
+      pooling_output = tf.reduce_mean(outputs, axis=1)
+      final_output = tf.concat([pooling_output, state], axis = 1)
+
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
+    return aggregated_model().create_model(
+        model_input=final_output,
         vocab_size=vocab_size,
         **unused_params)
