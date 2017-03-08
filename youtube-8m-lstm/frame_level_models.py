@@ -19,7 +19,8 @@ import math
 import models
 import video_level_models
 import tensorflow as tf
-import model_utils as utils
+import model_utils
+import utils
 
 import tensorflow.contrib.slim as slim
 from tensorflow import flags
@@ -44,7 +45,7 @@ flags.DEFINE_string("video_level_classifier_model", "MoeModel",
                     "Some Frame-Level models can be decomposed into a "
                     "generalized pooling operation followed by a "
                     "classifier layer")
-flags.DEFINE_integer("lstm_cells", 1024, "Number of LSTM cells.")
+flags.DEFINE_string("lstm_cells", "1024", "Number of LSTM cells.")
 flags.DEFINE_integer("lstm_layers", 2, "Number of LSTM layers.")
 flags.DEFINE_integer("gru_cells", 1024, "Number of GRU cells.")
 flags.DEFINE_integer("gru_layers", 2, "Number of GRU layers.")
@@ -126,10 +127,10 @@ class DbofModel(models.BaseModel):
 
     num_frames = tf.cast(tf.expand_dims(num_frames, 1), tf.float32)
     if random_frames:
-      model_input = utils.SampleRandomFrames(model_input, num_frames,
+      model_input = model_utils.SampleRandomFrames(model_input, num_frames,
                                              iterations)
     else:
-      model_input = utils.SampleRandomSequence(model_input, num_frames,
+      model_input = model_utils.SampleRandomSequence(model_input, num_frames,
                                                iterations)
     max_frames = model_input.get_shape().as_list()[1]
     feature_size = model_input.get_shape().as_list()[2]
@@ -166,7 +167,7 @@ class DbofModel(models.BaseModel):
     tf.summary.histogram("cluster_output", activation)
 
     activation = tf.reshape(activation, [-1, max_frames, cluster_size])
-    activation = utils.FramePooling(activation, FLAGS.dbof_pooling_method)
+    activation = model_utils.FramePooling(activation, FLAGS.dbof_pooling_method)
 
     hidden1_weights = tf.Variable(tf.random_normal(
         [cluster_size, hidden1_size],
@@ -213,7 +214,7 @@ class LstmModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       'batch_size' x 'num_classes'.
     """
-    lstm_size = FLAGS.lstm_cells
+    lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
 
     ## Batch normalize the input
@@ -257,7 +258,7 @@ class LstmParallelModel(models.BaseModel):
     """
     number_of_layers = FLAGS.lstm_layers
 
-    lstm_sizes = map(int, map(strip, FLAGS.lstm_cells.split(",")))
+    lstm_sizes = map(int, FLAGS.lstm_cells.split(","))
     feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
         FLAGS.feature_names, FLAGS.feature_sizes)
     sub_inputs = tf.split(model_input, feature_sizes, axis = 2)
@@ -315,7 +316,7 @@ class LstmPoolingModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       'batch_size' x 'num_classes'.
     """
-    lstm_size = FLAGS.lstm_cells
+    lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
 
     ## Batch normalize the input
@@ -359,7 +360,7 @@ class LstmWithPoolingModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       'batch_size' x 'num_classes'.
     """
-    lstm_size = FLAGS.lstm_cells
+    lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
 
     ## Batch normalize the input
