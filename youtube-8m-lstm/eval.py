@@ -192,8 +192,8 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
 
   global_step_val = -1
   with tf.Session() as sess:
-    if model_checkpoint_path:
-      checkpoint = model_checkpoint_path
+    if FLAGS.model_checkpoint_path:
+      checkpoint = FLAGS.model_checkpoint_path
     else:
       checkpoint = tf.train.latest_checkpoint(FLAGS.train_dir)
     if checkpoint:
