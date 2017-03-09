@@ -19,7 +19,8 @@ import math
 import models
 import video_level_models
 import tensorflow as tf
-import model_utils as utils
+import model_utils
+import utils
 
 import tensorflow.contrib.slim as slim
 from tensorflow import flags
@@ -44,7 +45,7 @@ flags.DEFINE_string("video_level_classifier_model", "MoeModel",
                     "Some Frame-Level models can be decomposed into a "
                     "generalized pooling operation followed by a "
                     "classifier layer")
-flags.DEFINE_integer("lstm_cells", 1024, "Number of LSTM cells.")
+flags.DEFINE_string("lstm_cells", "1024", "Number of LSTM cells.")
 flags.DEFINE_integer("lstm_layers", 2, "Number of LSTM layers.")
 flags.DEFINE_integer("gru_cells", 1024, "Number of GRU cells.")
 flags.DEFINE_integer("gru_layers", 2, "Number of GRU layers.")
@@ -126,10 +127,10 @@ class DbofModel(models.BaseModel):
 
     num_frames = tf.cast(tf.expand_dims(num_frames, 1), tf.float32)
     if random_frames:
-      model_input = utils.SampleRandomFrames(model_input, num_frames,
+      model_input = model_utils.SampleRandomFrames(model_input, num_frames,
                                              iterations)
     else:
-      model_input = utils.SampleRandomSequence(model_input, num_frames,
+      model_input = model_utils.SampleRandomSequence(model_input, num_frames,
                                                iterations)
     max_frames = model_input.get_shape().as_list()[1]
     feature_size = model_input.get_shape().as_list()[2]
@@ -166,7 +167,7 @@ class DbofModel(models.BaseModel):
     tf.summary.histogram("cluster_output", activation)
 
     activation = tf.reshape(activation, [-1, max_frames, cluster_size])
-    activation = utils.FramePooling(activation, FLAGS.dbof_pooling_method)
+    activation = model_utils.FramePooling(activation, FLAGS.dbof_pooling_method)
 
     hidden1_weights = tf.Variable(tf.random_normal(
         [cluster_size, hidden1_size],
@@ -213,7 +214,7 @@ class LstmModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       'batch_size' x 'num_classes'.
     """
-    lstm_size = FLAGS.lstm_cells
+    lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
 
     ## Batch normalize the input
@@ -238,6 +239,66 @@ class LstmModel(models.BaseModel):
         vocab_size=vocab_size,
         **unused_params)
 
+class LstmParallelModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    """Creates a model which uses a stack of LSTMs to represent the video.
+
+    Args:
+      model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                   input features.
+      vocab_size: The number of classes in the dataset.
+      num_frames: A vector of length 'batch' which indicates the number of
+           frames for each video (before padding).
+
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      'batch_size' x 'num_classes'.
+    """
+    number_of_layers = FLAGS.lstm_layers
+
+    lstm_sizes = map(int, FLAGS.lstm_cells.split(","))
+    feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
+        FLAGS.feature_names, FLAGS.feature_sizes)
+    sub_inputs = tf.split(model_input, feature_sizes, axis = 2)
+
+    assert len(lstm_sizes) == len(feature_sizes), \
+      "length of lstm_sizes (={}) != length of feature_sizes (={})".format( \
+      len(lstm_sizes), len(feature_sizes))
+
+    loss = 0.0
+    outputs = []
+    states = []
+    for i in xrange(len(feature_sizes)):
+      with tf.variable_scope("RNN%d" % i):
+        sub_input = sub_inputs[i]
+        lstm_size = lstm_sizes[i]
+        ## Batch normalize the input
+        stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+                [
+                    tf.contrib.rnn.BasicLSTMCell(
+                        lstm_size, forget_bias=1.0, state_is_tuple=False)
+                    for _ in range(number_of_layers)
+                    ],
+                state_is_tuple=False)
+
+        output, state = tf.nn.dynamic_rnn(stacked_lstm, sub_input,
+                                         sequence_length=num_frames,
+                                         dtype=tf.float32)
+        outputs.append(output)
+        states.append(state)
+
+    # concat
+    final_state = tf.concat(states, axis = 1)
+
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
+    return aggregated_model().create_model(
+        model_input=final_state,
+        vocab_size=vocab_size,
+        **unused_params)
+
 class LstmPoolingModel(models.BaseModel):
 
   def create_model(self, model_input, vocab_size, num_frames, **unused_params):
@@ -255,7 +316,7 @@ class LstmPoolingModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       'batch_size' x 'num_classes'.
     """
-    lstm_size = FLAGS.lstm_cells
+    lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
 
     ## Batch normalize the input
@@ -299,7 +360,7 @@ class LstmWithPoolingModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       'batch_size' x 'num_classes'.
     """
-    lstm_size = FLAGS.lstm_cells
+    lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
 
     ## Batch normalize the input
