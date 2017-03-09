@@ -82,7 +82,9 @@ if __name__ == "__main__":
   flags.DEFINE_integer("num_epochs", 5,
                        "How many passes to make over the dataset before "
                        "halting training.")
-
+  flags.DEFINE_float("keep_checkpoint_every_n_hours", 1.0,
+                       "How many hours before saving a new checkpoint")
+ 
   # Other flags.
   flags.DEFINE_integer("num_readers", 8,
                        "How many threads to use for reading input files.")
@@ -490,7 +492,7 @@ class Trainer(object):
 
     logging.info("%s: Built graph.", task_as_string(self.task))
 
-    return tf.train.Saver(max_to_keep=0, keep_checkpoint_every_n_hours=0.25)
+    return tf.train.Saver(max_to_keep=0, keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours)
 
 
 class ParameterServer(object):

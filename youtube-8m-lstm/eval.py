@@ -35,6 +35,8 @@ if __name__ == "__main__":
                       "The directory to load the model files from. "
                       "The tensorboard metrics files are also saved to this "
                       "directory.")
+  flags.DEFINE_string("model_checkpoint_path", "",
+                      "The file to load the model files from. ")
   flags.DEFINE_string(
       "eval_data_pattern", "",
       "File glob defining the evaluation dataset in tensorflow.SequenceExample "
@@ -190,14 +192,17 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
 
   global_step_val = -1
   with tf.Session() as sess:
-    latest_checkpoint = tf.train.latest_checkpoint(FLAGS.train_dir)
-    if latest_checkpoint:
-      logging.info("Loading checkpoint for eval: " + latest_checkpoint)
+    if model_checkpoint_path:
+      checkpoint = model_checkpoint_path
+    else:
+      checkpoint = tf.train.latest_checkpoint(FLAGS.train_dir)
+    if checkpoint:
+      logging.info("Loading checkpoint for eval: " + checkpoint)
       # Restores from checkpoint
-      saver.restore(sess, latest_checkpoint)
+      saver.restore(sess, checkpoint)
       # Assuming model_checkpoint_path looks something like:
       # /my-favorite-path/yt8m_train/model.ckpt-0, extract global_step from it.
-      global_step_val = latest_checkpoint.split("/")[-1].split("-")[-1]
+      global_step_val = checkpoint.split("/")[-1].split("-")[-1]
     else:
       logging.info("No checkpoint file found.")
       return global_step_val
