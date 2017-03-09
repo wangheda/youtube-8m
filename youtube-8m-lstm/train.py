@@ -83,8 +83,8 @@ if __name__ == "__main__":
                        "How many passes to make over the dataset before "
                        "halting training.")
   flags.DEFINE_float("keep_checkpoint_every_n_hours", 1.0,
-                       "How many minutes to train before saving a new checkpoint")
-
+                       "How many hours before saving a new checkpoint")
+ 
   # Other flags.
   flags.DEFINE_integer("num_readers", 8,
                        "How many threads to use for reading input files.")
