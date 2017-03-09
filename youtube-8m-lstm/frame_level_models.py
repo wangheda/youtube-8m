@@ -492,7 +492,7 @@ class LstmDividedModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       'batch_size' x 'num_classes'.
     """
-    lstm_size = FLAGS.lstm_cells
+    lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
 
     with tf.device("/gpu:0"):
