@@ -1,4 +1,5 @@
 model/
+prediction/
 *.pdf
 */__pycache__/
 *.out
