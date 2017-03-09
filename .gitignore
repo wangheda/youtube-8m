@@ -1,1 +1,6 @@
 model/
+*.pdf
+*/__pycache__/
+*.out
+*.csv
+*.tfrecord
