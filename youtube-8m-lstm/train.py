@@ -492,7 +492,7 @@ class Trainer(object):
 
     logging.info("%s: Built graph.", task_as_string(self.task))
 
-    return tf.train.Saver(max_to_keep=0, keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours)
+    return tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours)
 
 
 class ParameterServer(object):
