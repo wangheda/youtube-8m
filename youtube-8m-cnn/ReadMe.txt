@@ -1,0 +1,5 @@
+CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/home/share/zhangt/mywork/youtube-8m-master/data/video/train_my/*.tfrecord' --train_dir=/home/zhangt/yt8m/video_level_moe_model --model='MoeModel' --moe_num_mixtures 16 --feature_names="mean_rgb, mean_audio" --feature_sizes="1024, 128"
+
+CUDA_VISIBLE_DEVICES=0 python inference.py --output_file=/home/zhangt/yt8m/video_level_moe_model/predictions.csv --input_data_pattern='/home/share/Youtube-8M/data/video/test/test*.tfrecord' --train_dir=/home/zhangt/yt8m/video_level_moe_model --feature_names="mean_rgb, mean_audio" --feature_sizes="1024, 128"
+
+CUDA_VISIBLE_DEVICES=1 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_cnn_model --model='FrameLevelLogisticModel' --moe_num_mixtures=4 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128

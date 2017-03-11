@@ -1,1 +1,7 @@
 model/
+prediction/
+*.pdf
+*/__pycache__/
+*.out
+*.csv
+*.tfrecord

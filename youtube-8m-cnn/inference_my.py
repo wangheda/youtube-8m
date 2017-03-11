@@ -29,14 +29,13 @@ import eval_util
 import losses
 import readers
 import utils
+import numpy as np
 
 FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
   flags.DEFINE_string("train_dir", "/tmp/yt8m_model/",
                       "The directory to load the model files from.")
-  flags.DEFINE_string("model_checkpoint_path", "",
-                      "The file path to load the model from.")
   flags.DEFINE_string("output_file", "",
                       "The file to save the predictions to.")
   flags.DEFINE_string(
@@ -113,15 +112,12 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
                             batch_size=batch_size,
                             allow_smaller_final_batch = True,
                             enqueue_many=True))
-    return video_id_batch, video_batch, num_frames_batch
+    return video_id_batch, video_batch, unused_labels, num_frames_batch
 
 def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
   with tf.Session() as sess, gfile.Open(out_file_location, "w+") as out_file:
-    video_id_batch, video_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
-    if FLAGS.model_checkpoint_path:
-      latest_checkpoint = FLAGS.model_checkpoint_path
-    else:
-      latest_checkpoint = tf.train.latest_checkpoint(train_dir)
+    video_id_batch, video_batch, video_label_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
+    latest_checkpoint = tf.train.latest_checkpoint(train_dir)
     if latest_checkpoint is None:
       raise Exception("unable to find a checkpoint at location: %s" % train_dir)
     else:
@@ -133,6 +129,7 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     input_tensor = tf.get_collection("input_batch_raw")[0]
     num_frames_tensor = tf.get_collection("num_frames")[0]
     predictions_tensor = tf.get_collection("predictions")[0]
+    bottleneck_tensor = tf.get_collection("bottleneck")[0]
 
     # Workaround for num_epochs issue.
     def set_up_init_ops(variables):
@@ -151,19 +148,21 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     num_examples_processed = 0
     start_time = time.time()
-    out_file.write("VideoId,LabelConfidencePairs\n")
+    #out_file.write("VideoId,LabelConfidencePairs\n")
 
     try:
       while not coord.should_stop():
-          video_id_batch_val, video_batch_val,num_frames_batch_val = sess.run([video_id_batch, video_batch, num_frames_batch])
-          predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
+          video_id_batch_val, video_batch_val, video_label_batch_val, num_frames_batch_val = sess.run([video_id_batch, video_batch, video_label_batch, num_frames_batch])
+          predictions_val, bottlenecks = sess.run([predictions_tensor, bottleneck_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
           now = time.time()
           num_examples_processed += len(video_batch_val)
-          num_classes = predictions_val.shape[1]
+          write_to_record(video_id_batch_val, video_label_batch_val, bottlenecks, num_examples_processed)
+          #num_classes = predictions_val.shape[1]
           logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
+          """
           for line in format_lines(video_id_batch_val, predictions_val, top_k):
             out_file.write(line)
-          out_file.flush()
+          out_file.flush()"""
 
 
     except tf.errors.OutOfRangeError:
@@ -173,7 +172,27 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
 
     coord.join(threads)
     sess.close()
-
+def write_to_record(id_batch, label_batch, bottlenecks, num_examples_processed):
+    writer = tf.python_io.TFRecordWriter(FLAGS.out_file+str(num_examples_processed)+'.tfrecord')
+    max_frames = label_batch.shape[0]//FLAGS.batch_size
+    labels = label_batch[0:label_batch.shape[0]:max_frames, :]
+    for i in range(FLAGS.batch_size):
+        video_id = id_batch[i]
+        label = np.nonzero(labels[i,:])[0]
+        features = bottlenecks[i,:]
+        example = get_output_feature(video_id, label, [features],
+                                     ['bottle_necks'])
+        serialized = example.SerializeToString()
+        writer.write(serialized)
+    writer.close()
+def get_output_feature(video_id, labels, features, feature_names):
+    feature_maps = {'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[video_id])),
+                    'labels': tf.train.Feature(int64_list=tf.train.Int64List(value=labels))}
+    for feature_index in range(len(feature_names)):
+        feature_maps[feature_names[feature_index]] = tf.train.Feature(
+            float_list=tf.train.FloatList(value=features[feature_index]))
+    example = tf.train.Example(features=tf.train.Features(feature=feature_maps))
+    return example
 
 def main(unused_argv):
   logging.set_verbosity(tf.logging.INFO)

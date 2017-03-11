@@ -35,8 +35,6 @@ FLAGS = flags.FLAGS
 if __name__ == '__main__':
   flags.DEFINE_string("train_dir", "/tmp/yt8m_model/",
                       "The directory to load the model files from.")
-  flags.DEFINE_string("model_checkpoint_path", "",
-                      "The file path to load the model from.")
   flags.DEFINE_string("output_file", "",
                       "The file to save the predictions to.")
   flags.DEFINE_string(
@@ -118,10 +116,7 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
 def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
   with tf.Session() as sess, gfile.Open(out_file_location, "w+") as out_file:
     video_id_batch, video_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
-    if FLAGS.model_checkpoint_path:
-      latest_checkpoint = FLAGS.model_checkpoint_path
-    else:
-      latest_checkpoint = tf.train.latest_checkpoint(train_dir)
+    latest_checkpoint = tf.train.latest_checkpoint(train_dir)
     if latest_checkpoint is None:
       raise Exception("unable to find a checkpoint at location: %s" % train_dir)
     else:
