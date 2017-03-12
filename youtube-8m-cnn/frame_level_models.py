@@ -238,7 +238,7 @@ class LstmModel(models.BaseModel):
 
 class AttentionModel(models.BaseModel):
 
-    def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    def create_model(self, model_input, vocab_size, num_frames, l2_penalty=1e-8, **unused_params):
         """Creates a model which uses a stack of LSTMs to represent the video.
 
         Args:
@@ -269,7 +269,9 @@ class AttentionModel(models.BaseModel):
 
         with tf.variable_scope("Attention"):
             W = tf.Variable(tf.truncated_normal([shape[2]*2, 1], stddev=0.1), name="W")
+            tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
             b = tf.Variable(tf.constant(0.1, shape=[1]), name="b")
+            tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
             output = tf.nn.softmax(tf.nn.xw_plus_b(attention_input,W,b))
             output = tf.reshape(output,[-1,shape[1]])*frames_bool
             atten = output/tf.reduce_sum(output, axis=1, keep_dims=True)
@@ -286,7 +288,7 @@ class AttentionModel(models.BaseModel):
 
 class CnnModel(models.BaseModel):
     # highway layer that borrowed from https://github.com/carpedm20/lstm-char-cnn-tensorflow
-    def highway(self, input_1, input_2, size_1, size_2, layer_size=1):
+    def highway(self, input_1, input_2, size_1, size_2, l2_penalty=1e-8, layer_size=1):
         """Highway Network (cf. http://arxiv.org/abs/1505.00387).
 
         t = sigmoid(Wy + b)
@@ -299,10 +301,14 @@ class CnnModel(models.BaseModel):
             with tf.name_scope('output_lin_%d' % idx):
                 W = tf.Variable(tf.truncated_normal([size_2,size_1], stddev=0.1), name="W")
                 b = tf.Variable(tf.constant(0.1, shape=[size_1]), name="b")
+                tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
+                tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
                 output = tf.nn.relu(tf.nn.xw_plus_b(output,W,b))
             with tf.name_scope('transform_lin_%d' % idx):
                 W = tf.Variable(tf.truncated_normal([size_1,size_1], stddev=0.1), name="W")
                 b = tf.Variable(tf.constant(0.1, shape=[size_1]), name="b")
+                tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
+                tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
                 transform_gate = tf.sigmoid(tf.nn.xw_plus_b(input_1,W,b))
             carry_gate = tf.constant(1.0) - transform_gate
 
@@ -310,7 +316,7 @@ class CnnModel(models.BaseModel):
 
         return output
 
-    def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    def create_model(self, model_input, vocab_size, num_frames, l2_penalty=1e-8, **unused_params):
         """Creates a model which uses a stack of LSTMs to represent the video.
 
         Args:
@@ -326,51 +332,15 @@ class CnnModel(models.BaseModel):
           'batch_size' x 'num_classes'.
         """
         # Create a convolution + maxpool layer for each filter size
-        filter_sizes = [1, 3, 5, 10, 20]
-        #filter_sizes = [1]
+        filter_sizes = [1, 2, 3, 4, 5]
         shape = model_input.get_shape().as_list()
-        steps = []
-        slices = []
-        for i in range(len(filter_sizes)):
-            step = filter_sizes[i]//2
-            if i==0:
-                step = 1
-            steps.append(step)
-            slice = ((shape[1]-step)//filter_sizes[i])*filter_sizes[i]
-            slices.append([slice,slice+step])
-        num_filters = [400, 300, 200, 100, 100]
+        num_filters = [400, 300, 200, 200, 200]
         #num_filters = [200]
         pooled_outputs = []
         frames_sum = tf.reduce_sum(tf.abs(model_input),axis=2)
         frames_true = tf.ones(tf.shape(frames_sum))
         frames_false = tf.zeros(tf.shape(frames_sum))
         frames_bool = tf.where(tf.greater(frames_sum, frames_false), frames_true, frames_false)
-
-        """
-        with tf.variable_scope("CNN"):
-            for filter_size, step, slice, num_filter in zip(filter_sizes, steps, slices, num_filters):
-                with tf.name_scope("conv-maxpool-%s" % filter_size):
-                    # Convolution Layer
-                    num_step = slice[0]//filter_size
-                    cnn_input_1 = tf.reshape(model_input[:, 0:slice[0], :], [-1, filter_size, num_step, shape[2]])
-                    cnn_input_1 = tf.reshape(tf.transpose(cnn_input_1, perm=[0, 2, 1, 3]),[-1, filter_size*shape[2]])
-                    cnn_input_2 = tf.reshape(model_input[:, step:slice[1], :], [-1, filter_size, num_step, shape[2]])
-                    cnn_input_2 = tf.reshape(tf.transpose(cnn_input_2, perm=[0, 2, 1, 3]),[-1, filter_size*shape[2]])
-
-                    frame_bool = frames_bool[:,0:slice[0]:filter_size]
-                    frame_bool = tf.reshape(frame_bool/tf.reduce_sum(frame_bool,axis=1,keep_dims=True),[-1, num_step, 1])
-                    filter_shape = [filter_size*shape[2], num_filter]
-                    W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
-                    b = tf.Variable(tf.constant(0.1, shape=[num_filter]), name="b")
-                    conv_1 = tf.tanh(tf.nn.xw_plus_b(cnn_input_1, W, b))
-                    conv_2 = tf.tanh(tf.nn.xw_plus_b(cnn_input_2, W, b))
-                    # Apply nonlinearity
-                    conv_1 = tf.reshape(conv_1,[-1, num_step, num_filter])
-                    conv_2 = tf.reshape(conv_2,[-1, num_step, num_filter])
-                    conv = tf.concat([conv_1,conv_2], axis=1)*tf.concat([frame_bool,frame_bool], axis=1)
-                    # Maxpooling over the outputs
-                    pooled = tf.reduce_sum(conv, axis=1)
-                    pooled_outputs.append(pooled)"""
 
 
         with tf.variable_scope("CNN"):
@@ -380,25 +350,20 @@ class CnnModel(models.BaseModel):
                 tf.tile(num_frames, [1, shape[2]]), [-1, shape[2]])
             avg_pooled = tf.reduce_sum(model_input,
                                        axis=[1]) / denominators
-            """
-            cnn_input = tf.reshape(model_input,[-1,shape[2]])
-            filter_shape = [shape[2], shape[2]//8]
-            W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
-            b = tf.Variable(tf.constant(0.1, shape=[shape[2]//8]), name="b")
-            cnn_out = tf.tanh(tf.nn.xw_plus_b(cnn_input, W, b))
-            cnn_input = tf.reshape(cnn_out,[-1,shape[1],shape[2]//8,1])
-            shape = cnn_input.get_shape().as_list()"""
+
             cnn_input = tf.expand_dims(model_input, 3)
 
-            for filter_size, step, num_filter in zip(filter_sizes, steps, num_filters):
+            for filter_size, num_filter in zip(filter_sizes, num_filters):
                 with tf.name_scope("conv-maxpool-%s" % filter_size):
                     # Convolution Layer
                     filter_shape = [filter_size, shape[2], 1, num_filter]
                     W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
                     b = tf.Variable(tf.constant(0.1, shape=[num_filter]), name="b")
+                    tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
+                    tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
                     conv = tf.nn.conv2d(cnn_input,W,strides=[1, 1, 1, 1],padding="VALID",name="conv")
                     # Apply nonlinearity
-                    h = tf.tanh(tf.nn.bias_add(conv, b), name="tanh")
+                    h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
                     # Maxpooling over the outputs
                     h_shape = h.get_shape().as_list()
                     h_out = tf.reshape(h,[-1,h_shape[1],num_filter])
@@ -406,29 +371,22 @@ class CnnModel(models.BaseModel):
                     frame_bool = frames_bool[:,0:h_shape[1]]
                     frame_bool = tf.reshape(frame_bool/tf.reduce_sum(frame_bool,axis=1,keep_dims=True),[-1, h_shape[1], 1])
                     # Maxpooling over the outputs
-                    pooled = tf.reduce_sum(h_out*frame_bool, axis=1)
+                    pooled = tf.reduce_max(h_out*frame_bool, axis=1)
                     pooled_outputs.append(pooled)
 
 
 
             # Combine all the pooled features
-            #num_filters_total = sum(num_filters)
+            num_filters_total = sum(num_filters)
             h_pool = tf.concat(pooled_outputs,1)
-            #h_pool_flat = tf.reshape(h_pool, [-1, num_filters_total])
 
-
-            """
             # Add highway
             with tf.name_scope("highway"):
-                h_highway = self.highway(avg_pooled, h_pool_flat, shape[2], num_filters_total)
+                h_highway = self.highway(h_pool, h_pool, num_filters_total, num_filters_total, l2_penalty=l2_penalty)
 
             # Add dropout
             with tf.name_scope("dropout"):
-                h_drop = tf.nn.dropout(h_highway, 0.5)"""
-
-            #h_drop = tf.concat([h_pool, avg_pooled], axis=1)
-            h_drop = h_pool
-            #h_drop = avg_pooled
+                h_drop = tf.nn.dropout(h_highway, 0.5)
 
         aggregated_model = getattr(video_level_models,
                                    FLAGS.video_level_classifier_model)
@@ -437,9 +395,182 @@ class CnnModel(models.BaseModel):
             vocab_size=vocab_size,
             **unused_params)
 
+class CnnLstmModel(models.BaseModel):
+
+    def create_model(self, model_input, vocab_size, num_frames, l2_penalty=1e-8, **unused_params):
+        """Creates a model which uses a stack of LSTMs to represent the video.
+
+        Args:
+          model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                       input features.
+          vocab_size: The number of classes in the dataset.
+          num_frames: A vector of length 'batch' which indicates the number of
+               frames for each video (before padding).
+
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          'batch_size' x 'num_classes'.
+        """
+        # Create a convolution + maxpool layer for each filter size
+        filter_sizes = [1, 2, 3, 4, 5]
+        shape = model_input.get_shape().as_list()
+        num_filters = [400, 300, 200, 200, 200]
+        pooled_outputs = []
+
+
+        with tf.variable_scope("CNN"):
+
+            cnn_input = tf.expand_dims(model_input, 3)
+
+            for filter_size, num_filter in zip(filter_sizes, num_filters):
+                with tf.name_scope("conv-maxpool-%s" % filter_size):
+                    # Convolution Layer
+                    filter_shape = [filter_size, shape[2], 1, num_filter]
+                    W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
+                    b = tf.Variable(tf.constant(0.1, shape=[num_filter]), name="b")
+                    tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
+                    tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
+                    conv = tf.nn.conv2d(cnn_input,W,strides=[1, 1, 1, 1],padding="SAME",name="conv")
+                    # Apply nonlinearity
+                    h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+                    # Maxpooling over the outputs
+                    h_shape = h.get_shape().as_list()
+                    h_out = tf.reshape(h,[-1,h_shape[1],num_filter])
+                    pooled_outputs.append(h_out)
+
+
+
+            # Combine all the pooled features
+            h_pool = tf.concat(pooled_outputs,2)
+
+        lstm_size = FLAGS.lstm_cells
+        number_of_layers = FLAGS.lstm_layers
+
+        ## Batch normalize the input
+        stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=False)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
+
+        with tf.variable_scope("RNN"):
+            outputs, state = tf.nn.dynamic_rnn(stacked_lstm, h_pool,
+                                           sequence_length=num_frames,
+                                           dtype=tf.float32)
+
+        aggregated_model = getattr(video_level_models,
+                                   FLAGS.video_level_classifier_model)
+        return aggregated_model().create_model(
+            model_input=state,
+            vocab_size=vocab_size,
+            **unused_params)
+
+class DeepCnnModel(models.BaseModel):
+
+    def highway(self, input_1, input_2, size_1, size_2, l2_penalty=1e-8, layer_size=1):
+        output = input_2
+        for idx in range(layer_size):
+            with tf.name_scope('output_lin_%d' % idx):
+                W = tf.Variable(tf.truncated_normal([size_2,size_1], stddev=0.1), name="W")
+                b = tf.Variable(tf.constant(0.1, shape=[size_1]), name="b")
+                tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
+                tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
+                output = tf.nn.relu(tf.nn.xw_plus_b(output,W,b))
+            with tf.name_scope('transform_lin_%d' % idx):
+                W = tf.Variable(tf.truncated_normal([size_1,size_1], stddev=0.1), name="W")
+                b = tf.Variable(tf.constant(0.1, shape=[size_1]), name="b")
+                tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
+                tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
+                transform_gate = tf.sigmoid(tf.nn.xw_plus_b(input_1,W,b))
+            carry_gate = tf.constant(1.0) - transform_gate
+            output = transform_gate * output + carry_gate * input_1
+        return output
+
+    def conv_block(self, input, out_size, layer, kernalsize=3, poolsize=2, l2_penalty=1e-8, shortcut=False):
+        in_shape = input.get_shape().as_list()
+        if layer>0:
+            filter_shape = [kernalsize, 1, in_shape[3], out_size]
+        else:
+            filter_shape = [kernalsize, in_shape[2], 1, out_size]
+        W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.05), name="W-%s" % layer)
+        b = tf.Variable(tf.constant(0.1, shape=[out_size]), name="b-%s" % layer)
+        tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
+        tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
+        if layer>0:
+            conv = tf.nn.conv2d(input, W, strides=[1, 1, 1, 1], padding="SAME", name="conv-%s" % layer)
+        else:
+            conv = tf.nn.conv2d(input, W, strides=[1, 1, 1, 1], padding="VALID", name="conv-%s" % layer)
+        if shortcut:
+            shortshape = [1,1,in_shape[3], out_size]
+            Ws = tf.Variable(tf.truncated_normal(shortshape, stddev=0.05), name="Ws-%s" % layer)
+            tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(Ws))
+            conv = conv + tf.nn.conv2d(input, Ws, strides=[1, 1, 1, 1], padding="SAME", name="conv-shortcut-%s" % layer)
+        h = tf.nn.bias_add(conv, b)
+        h2 = tf.nn.relu(tf.contrib.layers.batch_norm(h, center=True, scale=True, epsilon=1e-5, decay=0.9), name="relu")
+        pooled = tf.nn.max_pool(h2,ksize=[1, poolsize, 1, 1],strides=[1, poolsize, 1, 1],padding='VALID',name="pool-%s" % layer)
+
+        return pooled
+
+    def create_model(self, model_input, vocab_size, num_frames, l2_penalty=1e-8, **unused_params):
+        """Creates a model which uses a stack of LSTMs to represent the video.
+
+        Args:
+          model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                       input features.
+          vocab_size: The number of classes in the dataset.
+          num_frames: A vector of length 'batch' which indicates the number of
+               frames for each video (before padding).
+
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          'batch_size' x 'num_classes'.
+        """
+        # Create a convolution + maxpool layer for each filter size
+        kernal_size=3
+        pool_size=2
+
+        num_filters = 1024
+        layers = 4
+
+
+        with tf.variable_scope("CNN"):
+
+
+            cnn_input = tf.expand_dims(model_input, 3)
+
+            for i in range(layers):
+                with tf.name_scope("conv-maxpool-%s" % i):
+                    # Convolution Layer
+                    shape = cnn_input.get_shape().as_list()
+                    if i<layers-1:
+                        psize = pool_size
+                    else:
+                        psize = shape[1]
+                    cnn_input = self.conv_block(cnn_input,l2_penalty=l2_penalty, out_size=num_filters, layer=i, kernalsize=kernal_size, poolsize=psize)
+            pooled = tf.reshape(cnn_input,[-1,num_filters])
+            # Add highway
+            with tf.name_scope("highway"):
+                h_highway = self.highway(pooled, pooled, num_filters, num_filters, l2_penalty=l2_penalty)
+
+            # Add dropout
+            with tf.name_scope("dropout"):
+                h_drop = tf.nn.dropout(h_highway, 0.5)
+
+        aggregated_model = getattr(video_level_models,
+                                   FLAGS.video_level_classifier_model)
+        return aggregated_model().create_model(
+            model_input=h_drop,
+            vocab_size=vocab_size,
+            **unused_params)
+
+
 class MixLogisticModel(models.BaseModel):
 
-    def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    def create_model(self, model_input, vocab_size, num_frames, l2_penalty=1e-8, **unused_params):
         """Creates a model which uses a logistic classifier over the average of the
         frame-level features.
 
@@ -473,11 +604,11 @@ class MixLogisticModel(models.BaseModel):
 
         hidden = slim.fully_connected(
             reshaped_input, feature_size, activation_fn=tf.tanh,
-            weights_regularizer=slim.l2_regularizer(1e-8))
+            weights_regularizer=slim.l2_regularizer(l2_penalty))
 
         output = slim.fully_connected(
             hidden, vocab_size, activation_fn=tf.nn.sigmoid,
-            weights_regularizer=slim.l2_regularizer(1e-8))
+            weights_regularizer=slim.l2_regularizer(l2_penalty))
 
         videofeatures = tf.reduce_sum(tf.reshape(hidden,[-1,max_frames,feature_size])*frames_bool,axis=1)
         output = tf.reduce_sum(tf.reshape(output,[-1,max_frames,vocab_size])*frames_bool,axis=1)
