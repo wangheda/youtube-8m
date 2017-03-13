@@ -260,14 +260,24 @@ class BiLstmModel(models.BaseModel):
     number_of_layers = FLAGS.lstm_layers
 
     ## Batch normalize the input
-    f_cell = tf.contrib.rnn.BasicLSTMCell(
-                lstm_size, forget_bias=1.0, state_is_tuple=False)
-    b_cell = tf.contrib.rnn.BasicLSTMCell(
-                lstm_size, forget_bias=1.0, state_is_tuple=False)
+    fw_stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=False)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
+    bw_stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=False)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
 
     loss = 0.0
     with tf.variable_scope("RNN"):
-      outputs, states = tf.nn.bidirectional_dynamic_rnn(cell_fw = f_cell, cell_bw = b_cell, 
+      outputs, states = tf.nn.bidirectional_dynamic_rnn(cell_fw = fw_stacked_lstm, cell_bw = bw_stacked_lstm, 
                                          inputs = model_input,
                                          sequence_length=num_frames,
                                          dtype=tf.float32)
