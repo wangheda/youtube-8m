@@ -422,15 +422,14 @@ class LstmWithMeanInputModel(models.BaseModel):
     lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
 
-    with tf.device("/gpu:0"):
-      ## Batch normalize the input
-      stacked_lstm = tf.contrib.rnn.MultiRNNCell(
-              [
-                  tf.contrib.rnn.BasicLSTMCell(
-                      lstm_size, forget_bias=1.0, state_is_tuple=False)
-                  for _ in range(number_of_layers)
-                  ],
-              state_is_tuple=False)
+    ## Batch normalize the input
+    stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=False)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
 
     loss = 0.0
     with tf.variable_scope("RNN"):
@@ -439,17 +438,15 @@ class LstmWithMeanInputModel(models.BaseModel):
                                          time_major=False,
                                          dtype=tf.float32)
 
-    with tf.device("/gpu:0"):
-      mean_input = tf.reduce_mean(model_input, axis = 1)
-      final_output = tf.concat([mean_input, state], axis = 1)
+    mean_input = tf.reduce_mean(model_input, axis = 1)
+    final_output = tf.concat([mean_input, state], axis = 1)
 
-    with tf.device("/cpu:0"):
-      aggregated_model = getattr(video_level_models,
-                                 FLAGS.video_level_classifier_model)
-      predictions = aggregated_model().create_model(
-          model_input=final_output,
-          vocab_size=vocab_size,
-          **unused_params)
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
+    predictions = aggregated_model().create_model(
+        model_input=final_output,
+        vocab_size=vocab_size,
+        **unused_params)
     return predictions
 
 class LstmWithPoolingModel(models.BaseModel):
