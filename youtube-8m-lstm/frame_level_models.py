@@ -679,7 +679,7 @@ class CnnKmaxModel(models.BaseModel):
           filter_shape = [filter_size, num_features, 1, filter_num]
 
           W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
-          b = tf.Variable(tf.constant(0.1, shape=[num_filter]), name="b")
+          b = tf.Variable(tf.constant(0.1, shape=[filter_num]), name="b")
 
           tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W))
           tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b))
@@ -689,16 +689,18 @@ class CnnKmaxModel(models.BaseModel):
           # add bias
           conv = tf.nn.bias_add(conv, b)
           if pooling_k == 1:
-            _, conv_len, _, _= conv.shape().as_list()
-            conv_kmax = tf.nn.max_pool(conv, ksize = [1, conv_len, 1, 1], strides = [1, conv_len, 1, 1])
+            _, conv_len, _, _= conv.shape.as_list()
+            conv_kmax = tf.reduce_max(conv, axis = 1)
             conv_flat = tf.reshape(conv_kmax, [-1, filter_num])
           else:
             conv_kmax = tf.transpose(tf.squeeze(conv, axis = 2), perm = [0, 2, 1])
             conv_kmax, _ = tf.nn.top_k(conv_kmax, k = pooling_k, sorted = True)
             conv_flat = tf.reshape(conv_kmax, [-1, filter_num * pooling_k])
           cnn_output.append(conv_flat)
-      cnn_output = tf.concat(cnn_ouput, axis = 1)
+      cnn_output = tf.concat(cnn_output, axis = 1)
 
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
     return aggregated_model().create_model(
         model_input=conv_flat,
         vocab_size=vocab_size,
