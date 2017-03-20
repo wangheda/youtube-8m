@@ -15,7 +15,13 @@
 """Provides definitions for non-regularized training or test losses."""
 
 import tensorflow as tf
+from tensorflow import flags
 
+FLAGS = flags.FLAGS
+flags.DEFINE_float("false_negative_punishment", 1.0, 
+                   "punishment constant to 1 classified to 0")
+flags.DEFINE_float("false_positive_punishment", 1.0, 
+                   "punishment constant to 0 classified to 1")
 
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
@@ -35,6 +41,23 @@ class BaseLoss(object):
       A scalar loss tensor.
     """
     raise NotImplementedError()
+
+
+class WeightedCrossEntropyLoss(BaseLoss):
+  """Calculate the cross entropy loss between the predictions and labels.
+     1 -> 0 will be punished hard, while the other way will not punished not hard.
+  """
+
+  def calculate_loss(self, predictions, labels, **unused_params):
+    false_positive_punishment = FLAGS.false_positive_punishment
+    false_negative_punishment = FLAGS.false_negative_punishment
+    with tf.name_scope("loss_xent_recall"):
+      epsilon = 10e-6
+      float_labels = tf.cast(labels, tf.float32)
+      cross_entropy_loss = false_negative_punishment * float_labels * tf.log(predictions + epsilon) \
+          + false_positive_punishment * ( 1 - float_labels) * tf.log(1 - predictions + epsilon)
+      cross_entropy_loss = tf.negative(cross_entropy_loss)
+      return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
 
 
 class CrossEntropyLoss(BaseLoss):
