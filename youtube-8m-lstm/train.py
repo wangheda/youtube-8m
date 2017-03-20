@@ -95,6 +95,8 @@ if __name__ == "__main__":
       "log_device_placement", False,
       "Whether to write the device on which every op will run into the "
       "logs on startup.")
+  flags.DEFINE_integer("recall_at_n", 100,
+                       "N in recall@N.")
 
 def validate_class_name(flag_value, category, modules, expected_superclass):
   """Checks that the given string matches a class of the expected type.
@@ -374,12 +376,20 @@ class Trainer(object):
                                                         labels_val)
             perr = eval_util.calculate_precision_at_equal_recall_rate(
                 predictions_val, labels_val)
+            recall = "N/A"
+            if False:
+              recall = eval_util.calculate_recall_at_n(
+                  predictions_val, labels_val, FLAGS.recall_at_n)
+              sv.summary_writer.add_summary(
+                  utils.MakeSummary("model/Training_Recall@%d" % FLAGS.recall_at_n, recall), global_step_val)
+              recall = "%.2f" % recall
             gap = eval_util.calculate_gap(predictions_val, labels_val)
 
             logging.info(
                 "%s: training step " + str(global_step_val) + "| Hit@1: " +
                 ("%.2f" % hit_at_one) + " PERR: " + ("%.2f" % perr) + " GAP: " +
-                ("%.2f" % gap) + " Loss: " + str(loss_val),
+                ("%.2f" % gap) + " Recall@%d: " % FLAGS.recall_at_n +
+                recall + " Loss: " + str(loss_val),
                 task_as_string(self.task))
 
             sv.summary_writer.add_summary(
