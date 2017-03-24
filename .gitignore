@@ -6,3 +6,4 @@ prediction/
 *.csv
 *.tfrecord
 *.pyc
+.*.swp
