@@ -52,6 +52,8 @@ flags.DEFINE_integer("lstm_layers", 2, "Number of LSTM layers.")
 flags.DEFINE_integer("gru_cells", 1024, "Number of GRU cells.")
 flags.DEFINE_integer("gru_layers", 2, "Number of GRU layers.")
 
+flags.DEFINE_integer("attention_size", 1, "Number of attention layers.")
+
 flags.DEFINE_string("cnn_filter_sizes", "1,2,3", "Sizes of cnn filters.")
 flags.DEFINE_string("cnn_filter_nums", "256,256,256", "Numbers of every cnn filters.")
 flags.DEFINE_integer("cnn_pooling_k", 4, "The k value for max-k pooling.")
@@ -913,4 +915,83 @@ class LstmAdvancedModel(models.BaseModel):
         model_input=state,
         vocab_size=vocab_size,
         **unused_params)
+
+class LstmMultiAttentionModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    """Creates a model which uses a stack of LSTMs to represent the video.
+
+    Args:
+      model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                   input features.
+      vocab_size: The number of classes in the dataset.
+      num_frames: A vector of length 'batch' which indicates the number of
+           frames for each video (before padding).
+
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      'batch_size' x 'num_classes'.
+    """
+    lstm_size = int(FLAGS.lstm_cells)
+    number_of_layers = FLAGS.lstm_layers
+    attention_size = FLAGS.attention_size
+    l2_penalty = unused_params.get("l2_penalty", 1e-8)
+    max_frames = model_input.get_shape().as_list()[1]
+
+    mask_array = []
+    for i in xrange(max_frames + 1):
+      tmp = [0.0] * max_frames 
+      for j in xrange(i):
+        tmp[j] = 1.0
+      mask_array.append(tmp)
+    mask_array = np.array(mask_array)
+    mask_init = tf.constant_initializer(mask_array)
+    mask_emb = tf.get_variable("mask_emb", shape = [max_frames + 1, max_frames], 
+            dtype = tf.float32, trainable = False, initializer = mask_init)
+    
+    ## Batch normalize the input
+    stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=True)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=True)
+
+    loss = 0.0
+    with tf.variable_scope("RNN"):
+      outputs, state = tf.nn.dynamic_rnn(stacked_lstm, model_input,
+                                         sequence_length=num_frames, 
+                                         swap_memory=FLAGS.rnn_swap_memory,
+                                         dtype=tf.float32)
+
+    num_frames_matrix = tf.maximum(tf.cast(
+        tf.expand_dims(tf.expand_dims(num_frames, axis=1), axis=2), 
+        dtype=tf.float32), 1.0)
+    mask = tf.expand_dims(tf.nn.embedding_lookup(mask_emb, num_frames), axis = 2)
+
+    attention_fc = slim.fully_connected(
+        outputs, attention_size, activation_fn=tf.nn.sigmoid,
+        weights_regularizer=slim.l2_regularizer(l2_penalty))
+    print attention_fc
+
+    attention = attention_fc * mask
+    attention_sum = tf.reduce_sum(attention, axis = 1, keep_dims = True) + 1e-8
+    attention = attention / attention_sum
+    print attention, model_input
+
+    attention_input = tf.einsum("ijk,ijl->ikl", attention, model_input)
+    print attention_input
+
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
+    attention_output = aggregated_model().create_model(
+        model_input=attention_input,
+        vocab_size=vocab_size,
+        **unused_params)["predictions"]
+    print attention_output
+
+    final_output = tf.reduce_max(tf.reshape(attention_output, [-1, attention_size, vocab_size]), axis = 1)
+    return {"predictions": final_output}
 
