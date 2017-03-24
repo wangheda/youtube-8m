@@ -5,3 +5,4 @@ prediction/
 *.out
 *.csv
 *.tfrecord
+*.pyc
