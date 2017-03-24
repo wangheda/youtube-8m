@@ -42,6 +42,35 @@ def calculate_hit_at_one(predictions, actuals):
   return numpy.average(hits)
 
 
+def calculate_recall_at_n(predictions, actuals, n):
+  """Performs a local (numpy) calculation of the recall@n
+
+  Args:
+    predictions: Matrix containing the outputs of the model.
+      Dimensions are 'batch' x 'num_classes'.
+    actuals: Matrix containing the ground truth labels.
+      Dimensions are 'batch' x 'num_classes'.
+    n: scalar of n
+
+  Returns:
+    float: The recall at n across the entire batch.
+  """
+  aggregated_recall = 0.0
+  num_videos = actuals.shape[0]
+  for row in numpy.arange(num_videos):
+    num_labels = int(numpy.sum(actuals[row]))
+    top_indices = numpy.argpartition(predictions[row],
+                                     -n)[-n:]
+    item_recall = 0.0
+    for label_index in top_indices:
+      if predictions[row][label_index] > 0:
+        item_recall += actuals[row][label_index]
+    item_recall /= num_labels
+    aggregated_recall += item_recall
+  aggregated_recall /= num_videos
+  return aggregated_recall
+
+
 def calculate_precision_at_equal_recall_rate(predictions, actuals):
   """Performs a local (numpy) calculation of the PERR.
 
@@ -68,6 +97,7 @@ def calculate_precision_at_equal_recall_rate(predictions, actuals):
     aggregated_precision += item_precision
   aggregated_precision /= num_videos
   return aggregated_precision
+
 
 def calculate_gap(predictions, actuals, top_k=20):
   """Performs a local (numpy) calculation of the global average precision.
