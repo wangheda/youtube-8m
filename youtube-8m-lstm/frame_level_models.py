@@ -1092,7 +1092,7 @@ class BiUniLstmModel(models.BaseModel):
                                          swap_memory=FLAGS.rnn_swap_memory,
                                          dtype=tf.float32)
       
-    state_fw, state_bw = states
+    state_fw, state_bw = l1_states
     state = tf.concat([state_fw, state_bw, l2_states], axis = 1)
 
     aggregated_model = getattr(video_level_models,
