@@ -895,7 +895,7 @@ class LstmAdvancedModel(models.BaseModel):
     stacked_lstm = tf.contrib.rnn.MultiRNNCell(
             [
                 tf.contrib.rnn.LSTMCell(
-                    lstm_size, forget_bias=1.0, state_is_tuple=False, use_peephole=True)
+                    lstm_size, forget_bias=1.0, state_is_tuple=False, use_peepholes=True)
                 for _ in range(number_of_layers)
                 ],
             state_is_tuple=False)
