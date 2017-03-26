@@ -27,12 +27,26 @@ flags.DEFINE_integer(
     "moe_num_mixtures", 2,
     "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
 flags.DEFINE_integer(
-    "num_embeddings", 256,
+    "num_embeddings", 128,
     "The dimension of sample embedding space.")
 flags.DEFINE_integer(
     "num_negative_samples", 10,
     "The ratio of negative samples to positive samples.")
 
+class DirectModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+    num_embeddings = model_input.shape[1]
+    predict_vec = model_input
+    label_embeddings = tf.get_variable("pos", shape = [vocab_size, num_embeddings],
+        dtype=tf.float32, initializer=tf.truncated_normal_initializer(mean=0, stddev=1.0),
+        regularizer=slim.l2_regularizer(l2_penalty))
+    positives = label_embeddings
+    normalized_vectors = tf.nn.l2_normalize(predict_vec, dim=1)
+    normalized_positives = tf.nn.l2_normalize(positives, dim=1)
+    predictions = tf.einsum("ik,jk->ij", normalized_vectors, normalized_positives)
+    return {"predictions": predictions, "predict_vec": predict_vec, "positives": positives}
+  
 class LinearModel(models.BaseModel):
   """ Linear model with L2 regularization."""
 
@@ -53,7 +67,7 @@ class LinearModel(models.BaseModel):
     num_embeddings = FLAGS.num_embeddings
     num_negative_samples = FLAGS.num_negative_samples 
     with tf.variable_scope("linear"):
-      predictions = slim.fully_connected(
+      predict_vec = slim.fully_connected(
           model_input, num_embeddings, activation_fn=None,
           weights_initializer=tf.truncated_normal_initializer(mean=0, stddev=1.0),
           weights_regularizer=slim.l2_regularizer(l2_penalty))
@@ -61,10 +75,10 @@ class LinearModel(models.BaseModel):
           dtype=tf.float32, initializer=tf.truncated_normal_initializer(mean=0, stddev=1.0),
           regularizer=slim.l2_regularizer(l2_penalty))
       positives = label_embeddings
-      negative_samples = tf.random_uniform([num_negative_samples, vocab_size], 
-          minval=0, maxval=vocab_size, dtype=tf.int32)
-      negatives = tf.nn.embedding_lookup(label_embeddings, negative_samples)
-    return {"predictions": predictions, "positives": positives, "negatives": negatives}
+      normalized_vectors = tf.nn.l2_normalize(predict_vec, dim=1)
+      normalized_positives = tf.nn.l2_normalize(positives, dim=1)
+      predictions = tf.einsum("ik,jk->ij", normalized_vectors, normalized_positives)
+    return {"predictions": predictions, "predict_vec": predict_vec, "positives": positives}
   
 class MoeModel(models.BaseModel):
   """A softmax over a mixture of logistic models (with L2 regularization)."""

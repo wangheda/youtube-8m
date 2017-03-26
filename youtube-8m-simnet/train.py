@@ -251,12 +251,11 @@ def build_graph(reader,
 
     predictions = result["predictions"]
     positives = result["positives"]
-    negatives = result["negatives"]
-    confidences = label_loss_fn.confidence(predictions, positives)
+    predict_vec = result["predict_vec"]
     if "loss" in result.keys():
       label_loss = result["loss"]
     else:
-      label_loss = label_loss_fn.calculate_loss(predictions, positives, negatives, labels_batch)
+      label_loss = label_loss_fn.calculate_loss(predict_vec, positives, labels_batch)
     tf.summary.scalar("label_loss", label_loss)
 
     if "regularization_loss" in result.keys():
@@ -293,7 +292,6 @@ def build_graph(reader,
     tf.add_to_collection("global_step", global_step)
     tf.add_to_collection("loss", label_loss)
     tf.add_to_collection("predictions", predictions)
-    tf.add_to_collection("confidences", confidences)
     tf.add_to_collection("input_batch_raw", model_input_raw)
     tf.add_to_collection("input_batch", model_input)
     tf.add_to_collection("num_frames", num_frames)
@@ -349,7 +347,6 @@ class Trainer(object):
         global_step = tf.get_collection("global_step")[0]
         loss = tf.get_collection("loss")[0]
         predictions = tf.get_collection("predictions")[0]
-        confidences = tf.get_collection("confidences")[0]
         labels = tf.get_collection("labels")[0]
         train_op = tf.get_collection("train_op")[0]
         init_op = tf.global_variables_initializer()
@@ -372,24 +369,24 @@ class Trainer(object):
         while not sv.should_stop():
 
           batch_start_time = time.time()
-          _, global_step_val, loss_val, confidences_val, labels_val = sess.run(
-              [train_op, global_step, loss, confidences, labels])
+          _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
+              [train_op, global_step, loss, predictions, labels])
           seconds_per_batch = time.time() - batch_start_time
 
           if self.is_master:
             examples_per_second = labels_val.shape[0] / seconds_per_batch
-            hit_at_one = eval_util.calculate_hit_at_one(confidences_val,
+            hit_at_one = eval_util.calculate_hit_at_one(predictions_val,
                                                         labels_val)
             perr = eval_util.calculate_precision_at_equal_recall_rate(
-                confidences_val, labels_val)
+                predictions_val, labels_val)
             recall = "N/A"
             if False:
               recall = eval_util.calculate_recall_at_n(
-                  confidences_val, labels_val, FLAGS.recall_at_n)
+                  predictions_val, labels_val, FLAGS.recall_at_n)
               sv.summary_writer.add_summary(
                   utils.MakeSummary("model/Training_Recall@%d" % FLAGS.recall_at_n, recall), global_step_val)
               recall = "%.2f" % recall
-            gap = eval_util.calculate_gap(confidences_val, labels_val)
+            gap = eval_util.calculate_gap(predictions_val, labels_val)
 
             logging.info(
                 "%s: training step " + str(global_step_val) + "| Hit@1: " +
