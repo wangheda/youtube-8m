@@ -26,13 +26,18 @@ flags.DEFINE_float("false_positive_punishment", 1.0,
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
 
-  def calculate_loss(self, unused_predictions, unused_labels, **unused_params):
+  def calculate_loss(self, unused_predictions, unused_positives, unused_negatives, unused_labels, **unused_params):
     """Calculates the average loss of the examples in a mini-batch.
 
      Args:
       unused_predictions: a 2-d tensor storing the prediction scores, in which
         each row represents a sample in the mini-batch and each column
         represents a class.
+      unused_positives: a 2-d tensor storing the positive embeddings, in which
+        each row represents a class in the mini-batch and each column
+        represents a dimension of embedding.
+      unused_negatives: a 3-d tensor storing the negative embeddings of shape 
+        num_negative_samples x num_classes x num_embeddings.
       unused_labels: a 2-d tensor storing the labels, which has the same shape
         as the unused_predictions. The labels must be in the range of 0 and 1.
       unused_params: loss specific parameters.
@@ -41,6 +46,34 @@ class BaseLoss(object):
       A scalar loss tensor.
     """
     raise NotImplementedError()
+
+class CosineHingeLoss(BaseLoss):
+  """Calculate the hinge loss between the predictions and labels.
+
+  Note the subgradient is used in the backpropagation, and thus the optimization
+  may converge slower. The predictions trained by the hinge loss are between -1
+  and +1.
+  """
+
+  def calculate_loss(self, predictions, positives, negatives, labels, b=0.3, **unused_params):
+    with tf.name_scope("cosine_hinge_loss"):
+      normalized_predictions = tf.nn.l2_normalize(predictions, dim=1)
+      normalized_positives = tf.nn.l2_normalize(positives, dim=1)
+      normalized_negatives = tf.nn.l2_normalize(negatives, dim=2)
+      sim_pos = tf.einsum("ik,jk->ij", normalized_predictions, normalized_positives)
+      sim_pos = tf.expand_dims(sim_pos, axis=0)
+      sim_neg = tf.einsum("jl,ikl->ijk", normalized_predictions, normalized_negatives)
+      hinge_loss = tf.maximum(sim_neg - sim_pos + b, 0.0)
+      mask = tf.expand_dims(tf.cast(labels, tf.float32), axis=0)
+      masked_loss = hinge_loss * mask
+      return tf.reduce_mean(tf.reduce_sum(masked_loss, axis=[0,2]))
+
+  def confidence(self, predictions, positives):
+    with tf.name_scope("cosine_hinge_loss_confidence"):
+      normalized_predictions = tf.nn.l2_normalize(predictions, dim=1)
+      normalized_positives = tf.nn.l2_normalize(positives, dim=1)
+      sim_pos = tf.einsum("ik,jk->ij", normalized_predictions, normalized_positives)
+      return sim_pos
 
 
 class WeightedCrossEntropyLoss(BaseLoss):
