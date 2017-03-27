@@ -26,26 +26,60 @@ FLAGS = flags.FLAGS
 flags.DEFINE_integer(
     "moe_num_mixtures", 2,
     "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+flags.DEFINE_integer(
+    "num_embeddings", 128,
+    "The dimension of sample embedding space.")
+flags.DEFINE_integer(
+    "num_negative_samples", 10,
+    "The ratio of negative samples to positive samples.")
 
-class LogisticModel(models.BaseModel):
-  """Logistic model with L2 regularization."""
+class DirectModel(models.BaseModel):
 
   def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-    """Creates a logistic model.
+    num_embeddings = model_input.shape[1]
+    predict_vec = model_input
+    label_embeddings = tf.get_variable("pos", shape = [vocab_size, num_embeddings],
+        dtype=tf.float32, initializer=tf.truncated_normal_initializer(mean=0, stddev=1.0),
+        regularizer=slim.l2_regularizer(l2_penalty))
+    positives = label_embeddings
+    normalized_vectors = tf.nn.l2_normalize(predict_vec, dim=1)
+    normalized_positives = tf.nn.l2_normalize(positives, dim=1)
+    predictions = tf.einsum("ik,jk->ij", normalized_vectors, normalized_positives)
+    return {"predictions": predictions, "predict_vec": predict_vec, "positives": positives}
+  
+class LinearModel(models.BaseModel):
+  """ Linear model with L2 regularization."""
 
+  def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+    """ Creates a linear model.
+    
     Args:
-      model_input: 'batch' x 'num_features' matrix of input features.
-      vocab_size: The number of classes in the dataset.
-
+        model_input: 'batch' x 'num_features' matrix of input features.
+        vocab_size: The number of classes in the dataset.
     Returns:
-      A dictionary with a tensor containing the probability predictions of the
-      model in the 'predictions' key. The dimensions of the tensor are
-      batch_size x num_classes."""
-    output = slim.fully_connected(
-        model_input, vocab_size, activation_fn=tf.nn.sigmoid,
-        weights_regularizer=slim.l2_regularizer(l2_penalty))
-    return {"predictions": output}
-
+        A dictionary with a tensor containing the vector predictions of the
+        model in the 'predictions' key. The dimensions of the tensor are
+        batch_size x num_embeddings. The tensor contains positive predictions
+        in the 'positive' key (num_classes x num_embeddings), and negative 
+        predictions in the 'negative' key (num_negative_samples x num_classes x
+        num_embeddings).
+    """
+    num_embeddings = FLAGS.num_embeddings
+    num_negative_samples = FLAGS.num_negative_samples 
+    with tf.variable_scope("linear"):
+      predict_vec = slim.fully_connected(
+          model_input, num_embeddings, activation_fn=tf.nn.relu,
+          weights_initializer=tf.truncated_normal_initializer(mean=0, stddev=1.0),
+          weights_regularizer=slim.l2_regularizer(l2_penalty))
+      label_embeddings = tf.get_variable("pos", shape = [vocab_size, num_embeddings],
+          dtype=tf.float32, initializer=tf.truncated_normal_initializer(mean=0, stddev=1.0),
+          regularizer=slim.l2_regularizer(l2_penalty))
+      positives = label_embeddings
+      normalized_vectors = tf.nn.l2_normalize(predict_vec, dim=1)
+      normalized_positives = tf.nn.l2_normalize(positives, dim=1)
+      predictions = tf.einsum("ik,jk->ij", normalized_vectors, normalized_positives)
+    return {"predictions": predictions, "predict_vec": predict_vec, "positives": positives}
+  
 class MoeModel(models.BaseModel):
   """A softmax over a mixture of logistic models (with L2 regularization)."""
 

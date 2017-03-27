@@ -69,7 +69,7 @@ if __name__ == "__main__":
   # Training flags.
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch for training.")
-  flags.DEFINE_string("label_loss", "HingeLoss",
+  flags.DEFINE_string("label_loss", "CosineHingeLoss",
                       "Which loss function to use for training the model.")
   flags.DEFINE_float(
       "regularization_penalty", 1,
@@ -171,13 +171,14 @@ def get_input_data_tensors(reader,
         batch_size=batch_size,
         capacity=FLAGS.batch_size * 5,
         min_after_dequeue=FLAGS.batch_size,
-        allow_smaller_final_batch=True,
+        allow_smaller_final_batch=False,
         enqueue_many=True)
 
 
 def find_class_by_name(name, modules):
   """Searches the provided modules for the named class and returns it."""
   modules = [getattr(module, name, None) for module in modules]
+  print modules
   return next(a for a in modules if a)
 
 
@@ -253,10 +254,12 @@ def build_graph(reader,
       tf.summary.histogram(variable.op.name, variable)
 
     predictions = result["predictions"]
+    positives = result["positives"]
+    predict_vec = result["predict_vec"]
     if "loss" in result.keys():
       label_loss = result["loss"]
     else:
-      label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+      label_loss = label_loss_fn.calculate_loss(predict_vec, positives, labels_batch)
     tf.summary.scalar("label_loss", label_loss)
 
     if "regularization_loss" in result.keys():
