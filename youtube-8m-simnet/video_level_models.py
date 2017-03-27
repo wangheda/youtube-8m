@@ -68,7 +68,7 @@ class LinearModel(models.BaseModel):
     num_negative_samples = FLAGS.num_negative_samples 
     with tf.variable_scope("linear"):
       predict_vec = slim.fully_connected(
-          model_input, num_embeddings, activation_fn=None,
+          model_input, num_embeddings, activation_fn=tf.nn.relu,
           weights_initializer=tf.truncated_normal_initializer(mean=0, stddev=1.0),
           weights_regularizer=slim.l2_regularizer(l2_penalty))
       label_embeddings = tf.get_variable("pos", shape = [vocab_size, num_embeddings],
