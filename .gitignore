@@ -5,3 +5,5 @@ prediction/
 *.out
 *.csv
 *.tfrecord
+*.pyc
+.*.swp

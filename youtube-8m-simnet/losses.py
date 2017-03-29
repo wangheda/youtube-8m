@@ -22,19 +22,22 @@ flags.DEFINE_float("false_negative_punishment", 1.0,
                    "punishment constant to 1 classified to 0")
 flags.DEFINE_float("false_positive_punishment", 1.0, 
                    "punishment constant to 0 classified to 1")
-flags.DEFINE_integer("num_classes", 4716,
+flags.DEFINE_integer("num_classes", 4716, 
                    "number of classes")
 
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
 
-  def calculate_loss(self, unused_predictions, unused_labels, **unused_params):
+  def calculate_loss(self, unused_predictions, unused_positives, unused_labels, **unused_params):
     """Calculates the average loss of the examples in a mini-batch.
 
      Args:
       unused_predictions: a 2-d tensor storing the prediction scores, in which
         each row represents a sample in the mini-batch and each column
         represents a class.
+      unused_positives: a 2-d tensor storing the positive embeddings, in which
+        each row represents a class in the mini-batch and each column
+        represents a dimension of embedding.
       unused_labels: a 2-d tensor storing the labels, which has the same shape
         as the unused_predictions. The labels must be in the range of 0 and 1.
       unused_params: loss specific parameters.
@@ -44,6 +47,54 @@ class BaseLoss(object):
     """
     raise NotImplementedError()
 
+class CosineHingeLoss(BaseLoss):
+  """Calculate the hinge loss between the predictions and labels."""
+
+  def calculate_loss(self, predictions, positives, labels, margin=0.2, adaptive=5, **unused_params):
+    batch_size = FLAGS.batch_size
+    num_classes = FLAGS.num_classes 
+    with tf.name_scope("adaptive_oversampling"):
+      normalized_predictions = tf.nn.l2_normalize(predictions, dim=1)
+      normalized_positives = tf.nn.l2_normalize(positives, dim=1)
+      sim_pos = tf.einsum("ik,jk->ij", normalized_predictions, normalized_positives)
+      # get sim_neg
+      mask = tf.cast(labels, tf.float32)
+      reverse_mask = 1.0 - mask
+      min_sim = tf.reduce_min((sim_pos - 1.0) * mask, axis=1, keep_dims=True) + 1.0
+      mask_wrong = tf.stop_gradient(tf.cast(sim_pos > min_sim, tf.float32) * reverse_mask)
+      # get positve samples
+      int_labels = tf.cast(labels, tf.int32)
+      sample_labels = tf.unstack(int_labels, num=batch_size, axis=0)
+      positive_samples = []
+      for sample_label in sample_labels:
+        indices = tf.where(sample_label > 0)
+        expanded_indices = tf.tile(indices[:,0], [num_classes])[:num_classes]
+        rand_arrange = tf.random_uniform([num_classes], minval=0, maxval=num_classes, dtype=tf.int32)
+        positive_sample = tf.gather(expanded_indices, rand_arrange)
+        positive_samples.append(positive_sample)
+      positive_samples = tf.stack(positive_samples)
+      sample_positives = tf.nn.embedding_lookup(positives, positive_samples)
+      normalized_sample_positives = tf.nn.l2_normalize(sample_positives, dim=2)
+      print normalized_sample_positives
+      sim_sample_pos = tf.einsum("ik,ijk->ij", normalized_predictions, normalized_sample_positives)
+      # hinge_loss
+      hinge_loss = tf.maximum(sim_pos - sim_sample_pos + margin, 0.0)
+      adaptive_loss = hinge_loss * mask_wrong
+      adaptive_loss = tf.reduce_mean(tf.reduce_sum(adaptive_loss, axis=1))
+      origin_loss = hinge_loss * reverse_mask
+      origin_loss = tf.reduce_mean(tf.reduce_sum(origin_loss, axis=1))
+    if adaptive > 0:
+      loss = adaptive * adaptive_loss + origin_loss
+    else:
+      loss = hinge_loss
+    return loss
+
+  def confidence(self, predictions, positives):
+    with tf.name_scope("cosine_hinge_loss_confidence"):
+      normalized_predictions = tf.nn.l2_normalize(predictions, dim=1)
+      normalized_positives = tf.nn.l2_normalize(positives, dim=1)
+      sim_pos = tf.einsum("ik,jk->ij", normalized_predictions, normalized_positives)
+      return sim_pos
 
 class WeightedCrossEntropyLoss(BaseLoss):
   """Calculate the cross entropy loss between the predictions and labels.
@@ -94,37 +145,18 @@ class HingeLoss(BaseLoss):
           all_zeros, tf.scalar_mul(b, all_ones) - sign_labels * predictions)
       return tf.reduce_mean(tf.reduce_sum(hinge_loss, 1))
 
-class PairwiseHingeLoss(BaseLoss):
-  def calculate_loss(self, predictions, labels, margin=1.0, adaptive=3, **unused_params):
-    batch_size = FLAGS.batch_size
-    num_classes = FLAGS.num_classes
+class RealHingeLoss(BaseLoss):
+  def calculate_loss(self, predictions, labels, b=0.2, **unused_params):
     with tf.name_scope("loss_hinge"):
-      # get sim_neg
-      mask = tf.cast(labels, tf.float32)
-      reverse_mask = 1.0 - mask
-      min_true_pred = tf.reduce_min((predictions - 1.0) * mask, axis=1, keep_dims=True) + 1.0
-      mask_wrong = tf.stop_gradient(tf.cast(predictions > min_true_pred, tf.float32) * reverse_mask)
-      # get positve samples
-      int_labels = tf.cast(labels, tf.int32)
-      sample_labels = tf.unstack(int_labels, num=batch_size, axis=0)
-      sample_predictions = tf.unstack(predictions, num=batch_size, axis=0)
-      positive_predictions = []
-      for sample_label, sample_prediction in zip(sample_labels, sample_predictions):
-        indices = tf.where(sample_label > 0)
-        expanded_indices = tf.tile(indices[:,0], [num_classes])[:num_classes]
-        rand_arrange = tf.random_uniform([num_classes], minval=0, maxval=num_classes, dtype=tf.int32)
-        positive_indices = tf.stop_gradient(tf.gather(expanded_indices, rand_arrange))
-        positive_prediction = tf.gather(sample_prediction, positive_indices)
-        positive_predictions.append(positive_prediction)
-      positive_predictions = tf.stack(positive_predictions)
-      # hinge_loss
-      hinge_loss = tf.maximum(predictions - positive_predictions + margin, 0.0)
-      adaptive_loss = hinge_loss * mask_wrong
-      adaptive_loss = tf.reduce_mean(tf.reduce_sum(adaptive_loss, axis=1))
-      origin_loss = hinge_loss * reverse_mask
-      origin_loss = tf.reduce_mean(tf.reduce_sum(origin_loss, axis=1))
-      loss = adaptive * adaptive_loss + origin_loss
-      return loss
+      float_labels = tf.cast(labels, tf.float32)
+      truth = float_labels
+      other = 1.0 - float_labels
+      mask = tf.einsum("ij,ik->ijk", truth, other)
+      col_pred = tf.expand_dims(predictions, axis = 2)
+      pred = tf.expand_dims(predictions, axis = 1)
+      loss = tf.maximum(0., b - col_pred + pred)
+      hinge_loss = tf.reduce_mean(tf.reduce_sum(loss * mask, [1,2]))
+      return hinge_loss
 
 
 class SoftmaxLoss(BaseLoss):
