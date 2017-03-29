@@ -120,7 +120,7 @@ def read_batch_files(q,files):
                 std_all.append(std_all_1[i])
     q.put([mean_features,std_features,mean_all,std_all])
 
-class myThread (threading.Thread):
+class myThread(threading.Thread):
     def __init__(self, threadID, name, files, q):
         threading.Thread.__init__(self)
         self.threadID = threadID
