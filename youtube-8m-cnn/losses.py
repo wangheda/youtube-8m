@@ -15,7 +15,11 @@
 """Provides definitions for non-regularized training or test losses."""
 
 import tensorflow as tf
-
+from tensorflow import flags
+FLAGS = flags.FLAGS
+flags.DEFINE_integer(
+  "num_pairs", 10,
+  "The number of pairs (excluding the dummy 'expert') used for Hingeloss.")
 
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
@@ -36,7 +40,6 @@ class BaseLoss(object):
     """
     raise NotImplementedError()
 
-
 class CrossEntropyLoss(BaseLoss):
   """Calculate the cross entropy loss between the predictions and labels.
   """
@@ -46,28 +49,84 @@ class CrossEntropyLoss(BaseLoss):
       epsilon = 10e-6
       float_labels = tf.cast(labels, tf.float32)
       cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
-          1 - float_labels) * tf.log(1 - predictions + epsilon)
+            1 - float_labels) * tf.log(1 - predictions + epsilon)
       cross_entropy_loss = tf.negative(cross_entropy_loss)
       return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
 
+class CrossEntropyLoss_weight(BaseLoss):
+  """Calculate the cross entropy loss between the predictions and labels.
+  """
 
-class HingeLoss(BaseLoss):
+  def calculate_loss(self, predictions, labels, **unused_params):
+    with tf.name_scope("loss_xent"):
+      epsilon = 10e-6
+      vocab_size = predictions.get_shape().as_list()[1]
+      float_labels = tf.cast(labels, tf.float32)
+      cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
+          1 - float_labels) * tf.log(1 - predictions + epsilon)
+      cross_entropy_loss = tf.negative(cross_entropy_loss)
+      neg_labels = 1 - float_labels
+      predictions_pos = predictions*float_labels+10*neg_labels
+      predictions_minpos = tf.reduce_min(predictions_pos,axis=1,keep_dims=True)
+      predictions_neg = predictions*neg_labels-10*float_labels
+      predictions_maxneg = tf.reduce_max(predictions_neg,axis=1,keep_dims=True)
+      mask_1 = tf.cast(tf.greater_equal(predictions_neg, predictions_minpos),dtype=tf.float32)
+      mask_2 = tf.cast(tf.less_equal(predictions_pos, predictions_maxneg),dtype=tf.float32)
+      cross_entropy_loss = cross_entropy_loss*(mask_1+mask_2)*10 + cross_entropy_loss
+      return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
+
+
+class HingeLoss_cos(BaseLoss):
   """Calculate the hinge loss between the predictions and labels.
 
   Note the subgradient is used in the backpropagation, and thus the optimization
   may converge slower. The predictions trained by the hinge loss are between -1
   and +1.
   """
-
-  def calculate_loss(self, predictions, labels, b=1.0, **unused_params):
+  def calculate_loss(self, predictions, labels, b1=1.6, b2=-0.4, **unused_params):
     with tf.name_scope("loss_hinge"):
       float_labels = tf.cast(labels, tf.float32)
-      all_zeros = tf.zeros(tf.shape(float_labels), dtype=tf.float32)
-      all_ones = tf.ones(tf.shape(float_labels), dtype=tf.float32)
-      sign_labels = tf.subtract(tf.scalar_mul(2, float_labels), all_ones)
-      hinge_loss = tf.maximum(
-          all_zeros, tf.scalar_mul(b, all_ones) - sign_labels * predictions)
-      return tf.reduce_mean(tf.reduce_sum(hinge_loss, 1))
+      neg_labels = 1 - float_labels
+      shape = predictions.get_shape().as_list()[1]
+      all_zeros = tf.zeros([FLAGS.batch_size,shape,FLAGS.num_pairs], dtype=tf.float32)
+
+      """
+      predictions_minpos = predictions*float_labels+10*neg_labels
+      predictions_minpos = tf.reduce_min(predictions_minpos,axis=1,keep_dims=True)
+      predictions_maxneg = predictions*neg_labels-10*float_labels
+      mask_1 = tf.cast(tf.greater_equal(predictions_maxneg, predictions_minpos),dtype=tf.float32)
+      mask_2 = neg_labels
+      pos_indices = []
+      for i in range(FLAGS.batch_size):
+        pos_var = tf.where(tf.not_equal(float_labels[i,:],all_zeros[i,:]))
+        pos_indice = tf.tile(tf.reshape(pos_var[:,0],[-1]),[shape])+i*shape
+        pos_indice = pos_indice[0:shape]
+        rand_var = tf.random_uniform([shape],0,shape, dtype=tf.int32)
+        pos_indice = tf.gather(pos_indice,rand_var)
+        pos_indices.append(pos_indice)
+
+      pos_indices = tf.reshape(tf.stack(pos_indices,axis=0), [-1])
+
+      predictions_shuffle = tf.reshape(tf.gather(tf.reshape(predictions, [-1]),pos_indices), [-1,shape])
+      hinge_loss = tf.maximum(all_zeros, b1 - predictions_shuffle + predictions)
+      hinge_loss = hinge_loss*mask_1 + hinge_loss*mask_2
+      return tf.reduce_mean(tf.reduce_sum(hinge_loss,axis=1))"""
+
+      predictions_shuffles = []
+      predictions_pos = tf.reshape(predictions*float_labels+(2-predictions)*neg_labels,[-1,shape,1])
+      predictions_neg = predictions*neg_labels+(2-predictions)*float_labels
+      predictions_org = tf.reshape(predictions,[-1,shape,1])
+      for i in range(FLAGS.num_pairs):
+        rand_var = tf.random_uniform([FLAGS.batch_size, shape],0,shape, dtype=tf.int32)+tf.reshape(tf.range(0, FLAGS.batch_size) * shape,[FLAGS.batch_size,1])
+        neg_indice = tf.reshape(rand_var, [-1])
+        predictions_shuffle = tf.reshape(tf.gather(tf.reshape(predictions_neg,[-1]),neg_indice),[-1,shape])
+        predictions_shuffles.append(tf.reshape(predictions_shuffle,[-1,shape]))
+
+      predictions_shuffles = tf.stack(predictions_shuffles,axis=2)
+
+      const = tf.reshape(b1*float_labels+b2*neg_labels,[-1,shape,1])
+      hinge_loss = tf.maximum(all_zeros, b1 - predictions_pos + predictions_shuffles)
+      return tf.reduce_mean(tf.reduce_sum(hinge_loss,axis=1))
 
 
 class SoftmaxLoss(BaseLoss):

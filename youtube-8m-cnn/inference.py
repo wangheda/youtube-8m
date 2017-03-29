@@ -53,7 +53,7 @@ if __name__ == '__main__':
       "features. The model must also be set appropriately (i.e. to read 3D "
       "batches VS 4D batches.")
   flags.DEFINE_integer(
-      "batch_size", 8192,
+      "batch_size", 1024,
       "How many examples to process per batch.")
   flags.DEFINE_string("feature_names", "mean_rgb", "Name of the feature "
                       "to use for training.")
@@ -111,7 +111,7 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
     video_id_batch, video_batch, unused_labels, num_frames_batch = (
         tf.train.batch_join(examples_and_labels,
                             batch_size=batch_size,
-                            allow_smaller_final_batch = True,
+                            allow_smaller_final_batch=True,
                             enqueue_many=True))
     return video_id_batch, video_batch, num_frames_batch
 

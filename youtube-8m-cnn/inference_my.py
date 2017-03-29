@@ -57,7 +57,8 @@ if __name__ == '__main__':
   flags.DEFINE_string("feature_names", "mean_rgb", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
-
+  flags.DEFINE_integer("file_size", 4096,
+                       "Number of frames per batch for DBoF.")
 
   # Other flags.
   flags.DEFINE_integer("num_readers", 1,
@@ -151,18 +152,41 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     #out_file.write("VideoId,LabelConfidencePairs\n")
 
     try:
+      video_id = []
+      video_label = []
+      video_features = []
+      filenum = 0
       while not coord.should_stop():
           video_id_batch_val, video_batch_val, video_label_batch_val, num_frames_batch_val = sess.run([video_id_batch, video_batch, video_label_batch, num_frames_batch])
-          predictions_val, bottlenecks = sess.run([predictions_tensor, bottleneck_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
+          bottlenecks = sess.run(bottleneck_tensor, feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
           now = time.time()
           num_examples_processed += len(video_batch_val)
-          write_to_record(video_id_batch_val, video_label_batch_val, bottlenecks, num_examples_processed)
+
+          video_id.append(video_id_batch_val)
+          video_label.append(video_label_batch_val)
+          video_features.append(bottlenecks)
+
+          if num_examples_processed>=FLAGS.file_size:
+            video_id = np.concatenate(video_id,axis=0)
+            video_label = np.concatenate(video_label,axis=0)
+            video_features = np.concatenate(video_features,axis=0)
+            write_to_record(video_id, video_label, video_features, filenum, num_examples_processed)
+            filenum += 1
+            video_id = []
+            video_label = []
+            video_features = []
+            num_examples_processed = 0
           #num_classes = predictions_val.shape[1]
           logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
           """
           for line in format_lines(video_id_batch_val, predictions_val, top_k):
             out_file.write(line)
           out_file.flush()"""
+      if num_examples_processed<FLAGS.file_size:
+          video_id = np.concatenate(video_id,axis=0)
+          video_label = np.concatenate(video_label,axis=0)
+          video_features = np.concatenate(video_features,axis=0)
+          write_to_record(video_id, video_label, video_features, filenum)
 
 
     except tf.errors.OutOfRangeError:
@@ -172,13 +196,11 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
 
     coord.join(threads)
     sess.close()
-def write_to_record(id_batch, label_batch, bottlenecks, num_examples_processed):
-    writer = tf.python_io.TFRecordWriter(FLAGS.out_file+str(num_examples_processed)+'.tfrecord')
-    max_frames = label_batch.shape[0]//FLAGS.batch_size
-    labels = label_batch[0:label_batch.shape[0]:max_frames, :]
-    for i in range(FLAGS.batch_size):
+def write_to_record(id_batch, label_batch, bottlenecks, filenum, num_examples_processed):
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_file+str(filenum)+'.tfrecord')
+    for i in range(num_examples_processed):
         video_id = id_batch[i]
-        label = np.nonzero(labels[i,:])[0]
+        label = np.nonzero(label_batch[i,:])[0]
         features = bottlenecks[i,:]
         example = get_output_feature(video_id, label, [features],
                                      ['bottle_necks'])
