@@ -7,3 +7,4 @@ prediction/
 *.tfrecord
 *.pyc
 .*.swp
+eda/data/
