@@ -260,10 +260,15 @@ def build_graph(reader,
         bottle_neck = result["bottleneck"]
     else:
         bottle_neck = tf.constant(0.0)
-
+    if "predictions_class" in result.keys():
+        predictions_class = result["predictions_class"]
+    else:
+        predictions_class = predictions
 
     if "loss" in result.keys():
       label_loss = result["loss"]
+    elif "predictions_class" in result.keys():
+      label_loss = label_loss_fn.calculate_loss_mix(predictions, predictions_class, labels_batch)
     else:
       label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
 

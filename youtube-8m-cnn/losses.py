@@ -16,6 +16,7 @@
 
 import tensorflow as tf
 from tensorflow import flags
+import numpy as np
 FLAGS = flags.FLAGS
 flags.DEFINE_integer(
   "num_pairs", 10,
@@ -52,6 +53,24 @@ class CrossEntropyLoss(BaseLoss):
             1 - float_labels) * tf.log(1 - predictions + epsilon)
       cross_entropy_loss = tf.negative(cross_entropy_loss)
       return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
+
+  def calculate_loss_mix(self, predictions, predictions_class, labels, **unused_params):
+    with tf.name_scope("loss_xent"):
+      epsilon = 10e-6
+      float_labels = tf.cast(labels, tf.float32)
+      cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
+             1 - float_labels) * tf.log(1 - predictions + epsilon)
+      seq = np.loadtxt("labels_class.out")
+      tf_seq = tf.constant(seq,dtype=tf.float32)
+      float_classes = tf.matmul(float_labels,tf_seq,transpose_b=True)
+      class_true = tf.ones(tf.shape(float_classes))
+      class_false = tf.zeros(tf.shape(float_classes))
+      float_classes = tf.where(tf.greater(float_classes, class_false), class_true, class_false)
+      cross_entropy_class = float_classes * tf.log(predictions_class + epsilon) + (
+             1 - float_classes) * tf.log(1 - predictions_class + epsilon)
+      cross_entropy_loss = tf.negative(cross_entropy_loss)
+      cross_entropy_class = tf.negative(cross_entropy_class)
+      return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1)) + tf.reduce_mean(tf.reduce_sum(cross_entropy_class, 1))
 
 class CrossEntropyLoss_weight(BaseLoss):
   """Calculate the cross entropy loss between the predictions and labels.
