@@ -158,7 +158,7 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
       filenum = 0
       while not coord.should_stop():
           video_id_batch_val, video_batch_val, video_label_batch_val, num_frames_batch_val = sess.run([video_id_batch, video_batch, video_label_batch, num_frames_batch])
-          bottlenecks = sess.run(bottleneck_tensor, feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
+          bottlenecks = sess.run(predictions_tensor, feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
           now = time.time()
           num_examples_processed += len(video_batch_val)
 
@@ -186,7 +186,7 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
           video_id = np.concatenate(video_id,axis=0)
           video_label = np.concatenate(video_label,axis=0)
           video_features = np.concatenate(video_features,axis=0)
-          write_to_record(video_id, video_label, video_features, filenum)
+          write_to_record(video_id, video_label, video_features, filenum,num_examples_processed)
 
 
     except tf.errors.OutOfRangeError:
