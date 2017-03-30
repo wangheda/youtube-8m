@@ -53,12 +53,6 @@ if __name__ == "__main__":
       "Otherwise, --train_data_pattern must be aggregated video-level "
       "features. The model must also be set appropriately (i.e. to read 3D "
       "batches VS 4D batches.")
-  flags.DEFINE_bool(
-      "frame_only", False,
-      "If set, then --train_data_pattern must be frame-level features. "
-      "Otherwise, --train_data_pattern must be aggregated video-level "
-      "features. The model must also be set appropriately (i.e. to read 3D "
-      "batches VS 4D batches.")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Models are defined "
@@ -70,8 +64,6 @@ if __name__ == "__main__":
 
   # Training flags.
   flags.DEFINE_integer("batch_size", 1024,
-                       "How many examples to process per batch for training.")
-  flags.DEFINE_integer("stride_size", 4,
                        "How many examples to process per batch for training.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Which loss function to use for training the model.")
@@ -90,17 +82,21 @@ if __name__ == "__main__":
   flags.DEFINE_integer("num_epochs", 5,
                        "How many passes to make over the dataset before "
                        "halting training.")
-
+  flags.DEFINE_float("keep_checkpoint_every_n_hours", 1.0,
+                       "How many hours before saving a new checkpoint")
+ 
   # Other flags.
   flags.DEFINE_integer("num_readers", 8,
                        "How many threads to use for reading input files.")
   flags.DEFINE_string("optimizer", "AdamOptimizer",
                       "What optimizer class to use.")
-  flags.DEFINE_float("clip_gradient_norm", 0.1, "Norm to clip gradients to.")
+  flags.DEFINE_float("clip_gradient_norm", 1.0, "Norm to clip gradients to.")
   flags.DEFINE_bool(
       "log_device_placement", False,
       "Whether to write the device on which every op will run into the "
       "logs on startup.")
+  flags.DEFINE_integer("recall_at_n", 100,
+                       "N in recall@N.")
 
 def validate_class_name(flag_value, category, modules, expected_superclass):
   """Checks that the given string matches a class of the expected type.
@@ -253,39 +249,10 @@ def build_graph(reader,
       tf.summary.histogram(variable.op.name, variable)
 
     predictions = result["predictions"]
-    if predictions.get_shape().ndims==3:
-        predictions = tf.reshape(predictions,[-1,predictions.get_shape().as_list()[2]])
-        labels_batch = tf.reshape(labels_batch,[-1,labels_batch.get_shape().as_list()[2]])
-    if "bottleneck" in result.keys():
-        bottle_neck = result["bottleneck"]
-    else:
-        bottle_neck = tf.constant(0.0)
-    if "predictions_class" in result.keys():
-        predictions_class = result["predictions_class"]
-    else:
-        predictions_class = predictions
-
     if "loss" in result.keys():
       label_loss = result["loss"]
-    elif "predictions_class" in result.keys():
-      label_loss = label_loss_fn.calculate_loss_mix(predictions, predictions_class, labels_batch)
     else:
       label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
-
-    if "prediction_frames" in result.keys():
-        predictions_frames = result["prediction_frames"]
-        max_frames = model_input.get_shape().as_list()[1]
-        frames_sum = tf.reduce_sum(tf.abs(model_input),axis=2)
-        frames_true = tf.ones(tf.shape(frames_sum))
-        frames_false = tf.zeros(tf.shape(frames_sum))
-        frames_bool = tf.where(tf.greater(frames_sum, frames_false), frames_true, frames_false)
-        frames_bool = tf.reshape(frames_bool[:,0:max_frames:FLAGS.stride_size],[-1,1])
-        labels_frames = tf.tile(tf.reshape(labels_batch,[-1,1,reader.num_classes]),[1,max_frames//FLAGS.stride_size,1])
-        labels_frames = tf.cast(tf.reshape(labels_frames,[-1,reader.num_classes]),tf.float32)*frames_bool
-        frame_loss = label_loss_fn.calculate_loss(predictions_frames, labels_frames)
-        label_loss = tf.constant(0.0)
-    else:
-        frame_loss = tf.constant(0.0)
     tf.summary.scalar("label_loss", label_loss)
 
     if "regularization_loss" in result.keys():
@@ -312,7 +279,7 @@ def build_graph(reader,
           label_loss = tf.identity(label_loss)
 
     # Incorporate the L2 weight penalties etc.
-    final_loss = regularization_penalty * reg_loss + label_loss + frame_loss
+    final_loss = regularization_penalty * reg_loss + label_loss
     train_op = slim.learning.create_train_op(
         final_loss,
         optimizer,
@@ -320,9 +287,7 @@ def build_graph(reader,
         clip_gradient_norm=clip_gradient_norm)
 
     tf.add_to_collection("global_step", global_step)
-    tf.add_to_collection("loss", final_loss)
-    tf.add_to_collection("reg_loss", reg_loss)
-    tf.add_to_collection("bottleneck", bottle_neck)
+    tf.add_to_collection("loss", label_loss)
     tf.add_to_collection("predictions", predictions)
     tf.add_to_collection("input_batch_raw", model_input_raw)
     tf.add_to_collection("input_batch", model_input)
@@ -378,7 +343,6 @@ class Trainer(object):
 
         global_step = tf.get_collection("global_step")[0]
         loss = tf.get_collection("loss")[0]
-        reg_loss = tf.get_collection("reg_loss")[0]
         predictions = tf.get_collection("predictions")[0]
         labels = tf.get_collection("labels")[0]
         train_op = tf.get_collection("train_op")[0]
@@ -390,7 +354,7 @@ class Trainer(object):
         init_op=init_op,
         is_chief=self.is_master,
         global_step=global_step,
-        save_model_secs=60 * 60,
+        save_model_secs=15 * 60,
         save_summaries_secs=120,
         saver=saver)
 
@@ -402,8 +366,8 @@ class Trainer(object):
         while not sv.should_stop():
 
           batch_start_time = time.time()
-          _, global_step_val, loss_val, reg_loss_val, predictions_val, labels_val = sess.run(
-              [train_op, global_step, loss, reg_loss, predictions, labels])
+          _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
+              [train_op, global_step, loss, predictions, labels])
           seconds_per_batch = time.time() - batch_start_time
 
           if self.is_master:
@@ -412,13 +376,20 @@ class Trainer(object):
                                                         labels_val)
             perr = eval_util.calculate_precision_at_equal_recall_rate(
                 predictions_val, labels_val)
+            recall = "N/A"
+            if False:
+              recall = eval_util.calculate_recall_at_n(
+                  predictions_val, labels_val, FLAGS.recall_at_n)
+              sv.summary_writer.add_summary(
+                  utils.MakeSummary("model/Training_Recall@%d" % FLAGS.recall_at_n, recall), global_step_val)
+              recall = "%.2f" % recall
             gap = eval_util.calculate_gap(predictions_val, labels_val)
 
             logging.info(
                 "%s: training step " + str(global_step_val) + "| Hit@1: " +
                 ("%.2f" % hit_at_one) + " PERR: " + ("%.2f" % perr) + " GAP: " +
-                ("%.2f" % gap) + " Loss: " + str(loss_val) +
-                " RegLoss: " + str(reg_loss_val),
+                ("%.2f" % gap) + " Recall@%d: " % FLAGS.recall_at_n +
+                recall + " Loss: " + str(loss_val),
                 task_as_string(self.task))
 
             sv.summary_writer.add_summary(
@@ -503,12 +474,8 @@ class Trainer(object):
         FLAGS.feature_names, FLAGS.feature_sizes)
 
     if FLAGS.frame_features:
-      if FLAGS.frame_only:
-          reader = readers.YT8MFrameFeatureOnlyReader(
-              feature_names=feature_names, feature_sizes=feature_sizes)
-      else:
-          reader = readers.YT8MFrameFeatureReader(
-              feature_names=feature_names, feature_sizes=feature_sizes)
+      reader = readers.YT8MFrameFeatureReader(
+          feature_names=feature_names, feature_sizes=feature_sizes)
     else:
       reader = readers.YT8MAggregatedFeatureReader(
           feature_names=feature_names, feature_sizes=feature_sizes)
@@ -535,7 +502,7 @@ class Trainer(object):
 
     logging.info("%s: Built graph.", task_as_string(self.task))
 
-    return tf.train.Saver(max_to_keep=0, keep_checkpoint_every_n_hours=0.25)
+    return tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours)
 
 
 class ParameterServer(object):
