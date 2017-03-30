@@ -82,8 +82,10 @@ class MoeModel(models.BaseModel):
     """
     num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
     dims = tf.rank(model_input)
+    print(dims)
     shape = model_input.get_shape().as_list()
-    model_input = tf.cond(tf.equal(dims,tf.constant(3)), lambda: tf.reshape(model_input,[-1,shape[-1]]), lambda: model_input)
+    if FLAGS.frame_features:
+        model_input = tf.reshape(model_input,[-1,shape[-1]])
     gate_activations = slim.fully_connected(
         model_input,
         vocab_size * (num_mixtures + 1),
@@ -112,8 +114,8 @@ class MoeModel(models.BaseModel):
 
     final_probabilities = tf.reshape(probabilities_by_class_and_batch,
                                      [-1, vocab_size])
-    final_probabilities = tf.cond(tf.equal(dims,tf.constant(3)), lambda: tf.reduce_mean(tf.reshape(final_probabilities,[-1,shape[1],
-                                vocab_size]),axis=1), lambda: final_probabilities)
+    if FLAGS.frame_features:
+        final_probabilities = tf.reduce_mean(tf.reshape(final_probabilities,[-1,shape[1],vocab_size]),axis=1)
     return {"predictions": final_probabilities}
 
 class MoeMaxModel(models.BaseModel):
@@ -145,21 +147,34 @@ class MoeMaxModel(models.BaseModel):
         """
         num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
 
-        gate_activations = slim.fully_connected(
+        class_input_1 = slim.fully_connected(
             model_input,
+            model_input.get_shape().as_list()[1],
+            activation_fn=tf.nn.tanh,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="class_inputs_1")
+        class_input_2 = slim.fully_connected(
+            class_input_1,
+            model_input.get_shape().as_list()[1],
+            activation_fn=tf.nn.tanh,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="class_inputs_2")
+
+        gate_activations = slim.fully_connected(
+            class_input_2,
             vocab_size * (num_mixtures+1),
             activation_fn=None,
             biases_initializer=None,
             weights_regularizer=slim.l2_regularizer(l2_penalty),
             scope="gates")
         expert_activations = slim.fully_connected(
-            model_input,
+            class_input_2,
             vocab_size,
             activation_fn=None,
             weights_regularizer=slim.l2_regularizer(l2_penalty),
             scope="experts")
         expert_others = slim.fully_connected(
-            model_input,
+            class_input_2,
             vocab_size,
             activation_fn=None,
             weights_regularizer=slim.l2_regularizer(l2_penalty),
@@ -278,10 +293,9 @@ class MoeLevelModel(models.BaseModel):
             class_gating_distribution[:, :num_mixtures] * class_expert_distribution, 1)
         probabilities_by_class = tf.reshape(probabilities_by_class,
                                             [-1, class_size])
-        seq = np.loadtxt("labels_class.out")
-        tf_seq = tf.constant(seq,dtype=tf.float32)
-        probabilities_by_class = tf.matmul(probabilities_by_class,tf_seq)
-
+        seq = np.loadtxt(FLAGS.class_file)
+        tf_seq = tf.one_hot(tf.constant(seq,dtype=tf.int32),FLAGS.class_num)
+        probabilities_by_class = tf.matmul(probabilities_by_class,tf_seq,transpose_b=True)
 
         final_probabilities = probabilities_by_vocab*probabilities_by_class
         return {"predictions": final_probabilities}
