@@ -139,7 +139,7 @@ def write_to_record(id_batch, label_batch, feature_dict, filenum, num_examples_p
     writer.close()
 
 def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
-  with tf.Session() as sess, gfile.Open(out_file_location, "w+") as out_file:
+  with tf.Session() as sess:
     video_id_batch, video_batch, video_label_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
     if FLAGS.model_checkpoint_path:
       latest_checkpoint = FLAGS.model_checkpoint_path
@@ -174,7 +174,6 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     num_examples_processed = 0
     start_time = time.time()
-    out_file.write("VideoId,LabelConfidencePairs\n")
 
     try:
       file_num = 0
