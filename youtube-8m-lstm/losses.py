@@ -206,5 +206,5 @@ class MultiTaskCrossEntropyLoss(MultiTaskLoss):
     ce_loss_fn = CrossEntropyLoss()
     cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
     cross_entropy_loss2 = ce_loss_fn.calculate_loss(vertical_predictions, vertical_labels, **unused_params)
-    return cross_entropy_loss * (1.0 - FLAGS.vertical_loss_percent) + cross_entropy_loss * FLAGS.vertical_loss_percent
+    return cross_entropy_loss * (1.0 - FLAGS.vertical_loss_percent) + cross_entropy_loss2 * FLAGS.vertical_loss_percent
 
