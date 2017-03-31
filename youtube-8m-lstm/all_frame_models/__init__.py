@@ -22,3 +22,4 @@ from progressive_attention_lstm_model import *
 
 from lstm_memory_multitask_model import *
 from lstm_memory_chain_model import *
+from lstm_memory_parallel_chain_model import *

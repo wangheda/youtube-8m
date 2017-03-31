@@ -10,7 +10,7 @@ import tensorflow.contrib.slim as slim
 from tensorflow import flags
 FLAGS = flags.FLAGS
 
-class LstmMemoryChainModel(models.BaseModel):
+class LstmMemoryParallelChainModel(models.BaseModel):
   """Classifier chain model of lstm memory"""
 
   def create_model(self, model_input, vocab_size, num_frames, **unused_params):
@@ -29,10 +29,34 @@ class LstmMemoryChainModel(models.BaseModel):
       'batch_size' x 'num_classes'.
     """
     lstm_size = int(FLAGS.lstm_cells)
+    support_lstm_size = lstm_size / 4
     number_of_layers = FLAGS.lstm_layers
     num_verticals = FLAGS.num_verticals
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
 
-    ## Batch normalize the input
+    stacked_lstm_support = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    support_lstm_size, forget_bias=1.0, state_is_tuple=True)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=True)
+
+    with tf.variable_scope("RNN-support"):
+      support_outputs, support_state = tf.nn.dynamic_rnn(stacked_lstm_support, model_input,
+                                         sequence_length=num_frames, 
+                                         swap_memory=FLAGS.rnn_swap_memory,
+                                         dtype=tf.float32)
+      support_final_state = tf.concat(map(lambda x: x.c, state), axis = 1)
+
+    vertical_predictions = aggregated_model().create_model(
+        model_input=support_final_state,
+        vocab_size=num_verticals,
+        sub_scope="support",
+        **unused_params)
+    vertical_predictions = vertical_predictions["predictions"]
+
     stacked_lstm = tf.contrib.rnn.MultiRNNCell(
             [
                 tf.contrib.rnn.BasicLSTMCell(
@@ -41,22 +65,13 @@ class LstmMemoryChainModel(models.BaseModel):
                 ],
             state_is_tuple=True)
 
-    loss = 0.0
-    with tf.variable_scope("RNN"):
+    with tf.variable_scope("RNN-main"):
       outputs, state = tf.nn.dynamic_rnn(stacked_lstm, model_input,
                                          sequence_length=num_frames, 
                                          swap_memory=FLAGS.rnn_swap_memory,
                                          dtype=tf.float32)
       final_state = tf.concat(map(lambda x: x.c, state), axis = 1)
 
-    aggregated_model = getattr(video_level_models,
-                               FLAGS.video_level_classifier_model)
-    vertical_predictions = aggregated_model().create_model(
-        model_input=final_state,
-        vocab_size=num_verticals,
-        sub_scope="support",
-        **unused_params)
-    vertical_predictions = vertical_predictions["predictions"]
     main_state = tf.concat([final_state, vertical_predictions], axis=1)
     predictions = aggregated_model().create_model(
         model_input=main_state,
