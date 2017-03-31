@@ -21,6 +21,11 @@ FLAGS = flags.FLAGS
 flags.DEFINE_integer(
   "num_pairs", 10,
   "The number of pairs (excluding the dummy 'expert') used for Hingeloss.")
+flags.DEFINE_integer(
+  "class_num", 25,
+  "The number of pairs (excluding the dummy 'expert') used for Hingeloss.")
+flags.DEFINE_string("class_file", "./resources/labels_class.out",
+                    "The directory to save the model files in.")
 
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
@@ -60,9 +65,9 @@ class CrossEntropyLoss(BaseLoss):
       float_labels = tf.cast(labels, tf.float32)
       cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
              1 - float_labels) * tf.log(1 - predictions + epsilon)
-      seq = np.loadtxt("labels_class.out")
-      tf_seq = tf.constant(seq,dtype=tf.float32)
-      float_classes = tf.matmul(float_labels,tf_seq,transpose_b=True)
+      seq = np.loadtxt(FLAGS.class_file)
+      tf_seq = tf.one_hot(tf.constant(seq,dtype=tf.int32),FLAGS.class_num)
+      float_classes = tf.matmul(float_labels,tf_seq)
       class_true = tf.ones(tf.shape(float_classes))
       class_false = tf.zeros(tf.shape(float_classes))
       float_classes = tf.where(tf.greater(float_classes, class_false), class_true, class_false)
