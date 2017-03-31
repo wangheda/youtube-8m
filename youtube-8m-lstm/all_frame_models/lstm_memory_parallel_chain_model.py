@@ -29,7 +29,7 @@ class LstmMemoryParallelChainModel(models.BaseModel):
       'batch_size' x 'num_classes'.
     """
     lstm_size = int(FLAGS.lstm_cells)
-    support_lstm_size = lstm_size / 4
+    support_lstm_size = lstm_size / 2
     number_of_layers = FLAGS.lstm_layers
     num_verticals = FLAGS.num_verticals
     aggregated_model = getattr(video_level_models,
