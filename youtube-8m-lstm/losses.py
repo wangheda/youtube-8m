@@ -14,6 +14,7 @@
 
 """Provides definitions for non-regularized training or test losses."""
 
+import numpy as np
 import tensorflow as tf
 from tensorflow import flags
 
@@ -24,6 +25,8 @@ flags.DEFINE_float("false_positive_punishment", 1.0,
                    "punishment constant to 0 classified to 1")
 flags.DEFINE_integer("num_classes", 4716,
                    "number of classes")
+flags.DEFINE_float("vertical_loss_percent", 0.1,
+                   "the part that vertical loss (in multi-task scenario) take in the whole loss function.")
 
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
@@ -159,3 +162,32 @@ class SoftmaxLoss(BaseLoss):
       softmax_loss = tf.negative(tf.reduce_sum(
           tf.multiply(norm_float_labels, tf.log(softmax_outputs)), 1))
     return tf.reduce_mean(softmax_loss)
+
+class MultiTaskCrossEntropyAndSoftmaxLoss(BaseLoss):
+  """Calculate the loss between the predictions and labels.
+  """
+  def calculate_loss(self, predictions, vertical_predictions, labels, **unused_params):
+    vertical_labels = self.get_vertical(labels)
+    ce_loss_fn = CrossEntropyLoss()
+    cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
+    sm_loss_fn = SoftmaxLoss()
+    softmax_loss = sm_loss_fn.calculate_loss(vertical_predictions, vertical_labels, **unused_params)
+    return cross_entropy_loss * (1.0 - FLAGS.vertical_loss_percent) + softmax_loss * FLAGS.vertical_loss_percent
+
+  def get_vertical(self, labels):
+    num_classes = FLAGS.num_classes
+    num_verticals = FLAGS.num_verticals
+    vertical_file = FLAGS.vertical_file
+    vertical_mapping = np.zeros([num_classes, num_verticals], dtype=np.float32)
+    float_labels = tf.cast(labels, tf.float32)
+    with open(vertical_file) as F:
+      for line in F:
+        group = map(int, line.strip().split())
+        if len(group) == 2:
+          x, y = group
+          vertical_mapping[x, y] = 1
+    vm_init = tf.constant_initializer(vertical_mapping)
+    vm = tf.get_variable("vm", shape = [num_classes, num_verticals], 
+                         trainable=False, initializer=vm_init)
+    vertical_labels = tf.matmul(float_labels, vm)
+    return vertical_labels

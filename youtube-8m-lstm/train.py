@@ -58,6 +58,9 @@ if __name__ == "__main__":
       "Which architecture to use for the model. Models are defined "
       "in models.py.")
   flags.DEFINE_bool(
+      "multitask", False,
+      "Whether to consider vertical_predictions")
+  flags.DEFINE_bool(
       "start_new_model", False,
       "If set, this will not resume from a checkpoint and will instead create a"
       " new model instance.")
@@ -252,7 +255,11 @@ def build_graph(reader,
     if "loss" in result.keys():
       label_loss = result["loss"]
     else:
-      label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+      if FLAGS.multitask:
+        vertical_predictions = result["vertical_predictions"]
+        label_loss = label_loss_fn.calculate_loss(predictions, vertical_predictions, labels_batch)
+      else:
+        label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
     tf.summary.scalar("label_loss", label_loss)
 
     if "regularization_loss" in result.keys():

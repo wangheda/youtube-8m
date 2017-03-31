@@ -60,6 +60,8 @@ if __name__ == "__main__":
       "frame_level_models.py for the model definitions.")
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch.")
+  flags.DEFINE_integer("stride_size", 4,
+                       "How many examples to process per batch for training.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Loss computed on validation data")
 
