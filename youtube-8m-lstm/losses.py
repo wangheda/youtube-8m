@@ -98,7 +98,7 @@ class HingeLoss(BaseLoss):
       return tf.reduce_mean(tf.reduce_sum(hinge_loss, 1))
 
 class PairwiseHingeLoss(BaseLoss):
-  def calculate_loss(self, predictions, labels, margin=1.0, adaptive=3, **unused_params):
+  def calculate_loss(self, predictions, labels, margin=0.2, adaptive=3.0, origin=1.0, **unused_params):
     batch_size = FLAGS.batch_size
     num_classes = FLAGS.num_classes
     with tf.name_scope("loss_hinge"):
@@ -106,7 +106,7 @@ class PairwiseHingeLoss(BaseLoss):
       mask = tf.cast(labels, tf.float32)
       reverse_mask = 1.0 - mask
       min_true_pred = tf.reduce_min((predictions - 1.0) * mask, axis=1, keep_dims=True) + 1.0
-      mask_wrong = tf.stop_gradient(tf.cast(predictions > min_true_pred, tf.float32) * reverse_mask)
+      mask_wrong = tf.stop_gradient(tf.cast(predictions > (min_true_pred - margin), tf.float32) * reverse_mask)
       # get positve samples
       int_labels = tf.cast(labels, tf.int32)
       sample_labels = tf.unstack(int_labels, num=batch_size, axis=0)
@@ -126,9 +126,16 @@ class PairwiseHingeLoss(BaseLoss):
       adaptive_loss = tf.reduce_mean(tf.reduce_sum(adaptive_loss, axis=1))
       origin_loss = hinge_loss * reverse_mask
       origin_loss = tf.reduce_mean(tf.reduce_sum(origin_loss, axis=1))
-      loss = adaptive * adaptive_loss + origin_loss
+      loss = adaptive * adaptive_loss + origin * origin_loss
       return loss
 
+class MixedLoss(BaseLoss):
+  def calculate_loss(self, predictions, labels, margin=0.2, adaptive=3, **unused_params):
+    cross_ent_loss = CrossEntropyLoss()
+    pairwise_loss = PairwiseHingeLoss()
+    ce_loss = cross_ent_loss.calculate_loss(predictions, labels, **unused_params)
+    pw_loss = pairwise_loss.calculate_loss(predictions, labels, margin, adaptive=1.0, origin=0.0, **unused_params)
+    return ce_loss + pw_loss * 0.05
 
 class SoftmaxLoss(BaseLoss):
   """Calculate the softmax loss between the predictions and labels.
