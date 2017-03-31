@@ -156,16 +156,11 @@ class SoftmaxLoss(BaseLoss):
           tf.multiply(norm_float_labels, tf.log(softmax_outputs)), 1))
     return tf.reduce_mean(softmax_loss)
 
-class MultiTaskCrossEntropyAndSoftmaxLoss(BaseLoss):
-  """Calculate the loss between the predictions and labels.
+class MultiTaskLoss(BaseLoss):
+  """This is a vitural loss
   """
-  def calculate_loss(self, predictions, vertical_predictions, labels, **unused_params):
-    vertical_labels = self.get_vertical(labels)
-    ce_loss_fn = CrossEntropyLoss()
-    cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
-    sm_loss_fn = SoftmaxLoss()
-    softmax_loss = sm_loss_fn.calculate_loss(vertical_predictions, vertical_labels, **unused_params)
-    return cross_entropy_loss * (1.0 - FLAGS.vertical_loss_percent) + softmax_loss * FLAGS.vertical_loss_percent
+  def calculate_loss(self, unused_predictions, unused_labels, **unused_params):
+    raise NotImplementedError()
 
   def get_vertical(self, labels):
     num_classes = FLAGS.num_classes
@@ -184,3 +179,25 @@ class MultiTaskCrossEntropyAndSoftmaxLoss(BaseLoss):
                          trainable=False, initializer=vm_init)
     vertical_labels = tf.matmul(float_labels, vm)
     return vertical_labels
+
+class MultiTaskCrossEntropyAndSoftmaxLoss(MultiTaskLoss):
+  """Calculate the loss between the predictions and labels.
+  """
+  def calculate_loss(self, predictions, vertical_predictions, labels, **unused_params):
+    vertical_labels = self.get_vertical(labels)
+    ce_loss_fn = CrossEntropyLoss()
+    cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
+    sm_loss_fn = SoftmaxLoss()
+    softmax_loss = sm_loss_fn.calculate_loss(vertical_predictions, vertical_labels, **unused_params)
+    return cross_entropy_loss * (1.0 - FLAGS.vertical_loss_percent) + softmax_loss * FLAGS.vertical_loss_percent
+
+class MultiTaskCrossEntropyLoss(MultiTaskLoss):
+  """Calculate the loss between the predictions and labels.
+  """
+  def calculate_loss(self, predictions, vertical_predictions, labels, **unused_params):
+    vertical_labels = tf.cast(self.get_vertical(labels) > 0, dtype=tf.float32)
+    ce_loss_fn = CrossEntropyLoss()
+    cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
+    cross_entropy_loss2 = ce_loss_fn.calculate_loss(vertical_predictions, vertical_labels, **unused_params)
+    return cross_entropy_loss * (1.0 - FLAGS.vertical_loss_percent) + cross_entropy_loss * FLAGS.vertical_loss_percent
+
