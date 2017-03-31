@@ -48,7 +48,7 @@ class LstmMemoryParallelChainModel(models.BaseModel):
                                          sequence_length=num_frames, 
                                          swap_memory=FLAGS.rnn_swap_memory,
                                          dtype=tf.float32)
-      support_final_state = tf.concat(map(lambda x: x.c, state), axis = 1)
+      support_final_state = tf.concat(map(lambda x: x.c, support_state), axis = 1)
 
     vertical_predictions = aggregated_model().create_model(
         model_input=support_final_state,
