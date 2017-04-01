@@ -59,7 +59,7 @@ if __name__ == "__main__":
       "in models.py.")
   flags.DEFINE_bool(
       "multitask", False,
-      "Whether to consider vertical_predictions")
+      "Whether to consider support_predictions")
   flags.DEFINE_bool(
       "start_new_model", False,
       "If set, this will not resume from a checkpoint and will instead create a"
@@ -256,8 +256,8 @@ def build_graph(reader,
       label_loss = result["loss"]
     else:
       if FLAGS.multitask:
-        vertical_predictions = result["vertical_predictions"]
-        label_loss = label_loss_fn.calculate_loss(predictions, vertical_predictions, labels_batch)
+        support_predictions = result["support_predictions"]
+        label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch)
       else:
         label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
     tf.summary.scalar("label_loss", label_loss)

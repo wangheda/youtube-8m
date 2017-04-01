@@ -11,10 +11,10 @@ class MultiTaskMoeModel(models.BaseModel):
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
                    l2_penalty=1e-8, sub_scope="", **unused_params):
-    num_verticals = FLAGS.num_verticals
-    vertical_predictions = self.sub_model(model_input, num_verticals, sub_scope=sub_scope+"-support")
+    num_supports = FLAGS.num_supports
+    support_predictions = self.sub_model(model_input, num_supports, sub_scope=sub_scope+"-support")
     main_predictions = self.sub_model(model_input, vocab_size, sub_scope=sub_scope+"-main")
-    return {"predictions": main_predictions, "vertical_predictions": vertical_predictions}
+    return {"predictions": main_predictions, "support_predictions": support_predictions}
 
   def sub_model(self, model_input, vocab_size, num_mixtures=None, 
                 l2_penalty=1e-8, sub_scope="", **unused_params):

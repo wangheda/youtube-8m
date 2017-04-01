@@ -11,9 +11,9 @@ class ChainMainReluMoeModel(models.BaseModel):
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
                    l2_penalty=1e-8, sub_scope="", **unused_params):
-    num_verticals = FLAGS.num_verticals
+    num_supports = FLAGS.num_supports
     input_size = model_input.shape.as_list()[1]
-    support_predictions = self.sub_model(model_input, num_verticals, sub_scope=sub_scope+"-support")
+    support_predictions = self.sub_model(model_input, num_supports, sub_scope=sub_scope+"-support")
     main_relu = slim.fully_connected(
         model_input,
         input_size,
@@ -22,7 +22,7 @@ class ChainMainReluMoeModel(models.BaseModel):
         scope="main-relu-"+sub_scope)
     main_input = tf.concat([main_relu, support_predictions], axis=1)
     main_predictions = self.sub_model(main_input, vocab_size, sub_scope=sub_scope+"-main")
-    return {"predictions": main_predictions, "vertical_predictions": support_predictions}
+    return {"predictions": main_predictions, "support_predictions": support_predictions}
 
   def sub_model(self, model_input, vocab_size, num_mixtures=None, 
                 l2_penalty=1e-8, sub_scope="", **unused_params):
