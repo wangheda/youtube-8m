@@ -14,6 +14,7 @@
 
 """Provides definitions for non-regularized training or test losses."""
 
+import numpy as np
 import tensorflow as tf
 from tensorflow import flags
 
@@ -24,6 +25,13 @@ flags.DEFINE_float("false_positive_punishment", 1.0,
                    "punishment constant to 0 classified to 1")
 flags.DEFINE_integer("num_classes", 4716,
                    "number of classes")
+
+flags.DEFINE_float("support_loss_percent", 0.1,
+                   "the part that support loss (in multi-task scenario) take in the whole loss function.")
+flags.DEFINE_string("support_type", "vertical",
+                   "type of support label, vertical or frequent.")
+flags.DEFINE_integer("num_supports", 25, "Number of total support categories.")
+flags.DEFINE_string("vertical_file", "resources/vertical.tsv", "Location of label-vertical mapping file.")
 
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
@@ -95,7 +103,7 @@ class HingeLoss(BaseLoss):
       return tf.reduce_mean(tf.reduce_sum(hinge_loss, 1))
 
 class PairwiseHingeLoss(BaseLoss):
-  def calculate_loss(self, predictions, labels, margin=1.0, adaptive=3, **unused_params):
+  def calculate_loss(self, predictions, labels, margin=0.2, adaptive=3.0, origin=1.0, **unused_params):
     batch_size = FLAGS.batch_size
     num_classes = FLAGS.num_classes
     with tf.name_scope("loss_hinge"):
@@ -103,7 +111,7 @@ class PairwiseHingeLoss(BaseLoss):
       mask = tf.cast(labels, tf.float32)
       reverse_mask = 1.0 - mask
       min_true_pred = tf.reduce_min((predictions - 1.0) * mask, axis=1, keep_dims=True) + 1.0
-      mask_wrong = tf.stop_gradient(tf.cast(predictions > min_true_pred, tf.float32) * reverse_mask)
+      mask_wrong = tf.stop_gradient(tf.cast(predictions > (min_true_pred - margin), tf.float32) * reverse_mask)
       # get positve samples
       int_labels = tf.cast(labels, tf.int32)
       sample_labels = tf.unstack(int_labels, num=batch_size, axis=0)
@@ -123,9 +131,16 @@ class PairwiseHingeLoss(BaseLoss):
       adaptive_loss = tf.reduce_mean(tf.reduce_sum(adaptive_loss, axis=1))
       origin_loss = hinge_loss * reverse_mask
       origin_loss = tf.reduce_mean(tf.reduce_sum(origin_loss, axis=1))
-      loss = adaptive * adaptive_loss + origin_loss
+      loss = adaptive * adaptive_loss + origin * origin_loss
       return loss
 
+class MixedLoss(BaseLoss):
+  def calculate_loss(self, predictions, labels, margin=0.2, adaptive=3, **unused_params):
+    cross_ent_loss = CrossEntropyLoss()
+    pairwise_loss = PairwiseHingeLoss()
+    ce_loss = cross_ent_loss.calculate_loss(predictions, labels, **unused_params)
+    pw_loss = pairwise_loss.calculate_loss(predictions, labels, margin, adaptive=1.0, origin=0.0, **unused_params)
+    return ce_loss + pw_loss * 0.05
 
 class SoftmaxLoss(BaseLoss):
   """Calculate the softmax loss between the predictions and labels.
@@ -152,3 +167,58 @@ class SoftmaxLoss(BaseLoss):
       softmax_loss = tf.negative(tf.reduce_sum(
           tf.multiply(norm_float_labels, tf.log(softmax_outputs)), 1))
     return tf.reduce_mean(softmax_loss)
+
+class MultiTaskLoss(BaseLoss):
+  """This is a vitural loss
+  """
+  def calculate_loss(self, unused_predictions, unused_labels, **unused_params):
+    raise NotImplementedError()
+
+  def get_support(self, labels):
+    if FLAGS.support_type == "vertical":
+      num_classes = FLAGS.num_classes
+      num_supports = FLAGS.num_supports
+      vertical_file = FLAGS.vertical_file
+      vertical_mapping = np.zeros([num_classes, num_supports], dtype=np.float32)
+      float_labels = tf.cast(labels, dtype=tf.float32)
+      with open(vertical_file) as F:
+        for line in F:
+          group = map(int, line.strip().split())
+          if len(group) == 2:
+            x, y = group
+            vertical_mapping[x, y] = 1
+      vm_init = tf.constant_initializer(vertical_mapping)
+      vm = tf.get_variable("vm", shape = [num_classes, num_supports], 
+                           trainable=False, initializer=vm_init)
+      vertical_labels = tf.matmul(float_labels, vm)
+      return vertical_labels
+    elif FLAGS.support_type == "frequent":
+      num_supports = FLAGS.num_supports
+      frequent_labels = tf.slice(labels, begin=[0, 0], size=[-1, num_supports])
+      frequent_labels = tf.cast(frequent_labels, dtype=tf.float32)
+      return frequent_labels
+    else:
+      raise NotImplementedError()
+
+
+class MultiTaskCrossEntropyAndSoftmaxLoss(MultiTaskLoss):
+  """Calculate the loss between the predictions and labels.
+  """
+  def calculate_loss(self, predictions, support_predictions, labels, **unused_params):
+    support_labels = self.get_support(labels)
+    ce_loss_fn = CrossEntropyLoss()
+    cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
+    sm_loss_fn = SoftmaxLoss()
+    softmax_loss = sm_loss_fn.calculate_loss(support_predictions, support_labels, **unused_params)
+    return cross_entropy_loss * (1.0 - FLAGS.support_loss_percent) + softmax_loss * FLAGS.support_loss_percent
+
+class MultiTaskCrossEntropyLoss(MultiTaskLoss):
+  """Calculate the loss between the predictions and labels.
+  """
+  def calculate_loss(self, predictions, support_predictions, labels, **unused_params):
+    support_labels = tf.cast(self.get_support(labels) > 0, dtype=tf.float32)
+    ce_loss_fn = CrossEntropyLoss()
+    cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
+    cross_entropy_loss2 = ce_loss_fn.calculate_loss(support_predictions, support_labels, **unused_params)
+    return cross_entropy_loss * (1.0 - FLAGS.support_loss_percent) + cross_entropy_loss2 * FLAGS.support_loss_percent
+

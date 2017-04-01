@@ -19,3 +19,7 @@ from lstm_pooling_model import *
 from lstm_with_mean_input_model import *
 from lstm_with_pooling_model import *
 from progressive_attention_lstm_model import *
+
+from lstm_memory_multitask_model import *
+from lstm_memory_chain_model import *
+from lstm_memory_parallel_chain_model import *
