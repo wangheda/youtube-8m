@@ -25,10 +25,13 @@ flags.DEFINE_float("false_positive_punishment", 1.0,
                    "punishment constant to 0 classified to 1")
 flags.DEFINE_integer("num_classes", 4716,
                    "number of classes")
+
 flags.DEFINE_float("support_loss_percent", 0.1,
                    "the part that support loss (in multi-task scenario) take in the whole loss function.")
 flags.DEFINE_string("support_type", "vertical",
                    "type of support label, vertical or frequent.")
+flags.DEFINE_integer("num_supports", 25, "Number of total support categories.")
+flags.DEFINE_string("vertical_file", "resources/vertical.tsv", "Location of label-vertical mapping file.")
 
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
@@ -174,9 +177,9 @@ class MultiTaskLoss(BaseLoss):
   def get_support(self, labels):
     if FLAGS.support_type == "vertical":
       num_classes = FLAGS.num_classes
-      num_verticals = FLAGS.num_verticals
+      num_supports = FLAGS.num_supports
       vertical_file = FLAGS.vertical_file
-      vertical_mapping = np.zeros([num_classes, num_verticals], dtype=np.float32)
+      vertical_mapping = np.zeros([num_classes, num_supports], dtype=np.float32)
       float_labels = tf.cast(labels, tf.float32)
       with open(vertical_file) as F:
         for line in F:
@@ -185,12 +188,12 @@ class MultiTaskLoss(BaseLoss):
             x, y = group
             vertical_mapping[x, y] = 1
       vm_init = tf.constant_initializer(vertical_mapping)
-      vm = tf.get_variable("vm", shape = [num_classes, num_verticals], 
+      vm = tf.get_variable("vm", shape = [num_classes, num_supports], 
                            trainable=False, initializer=vm_init)
       vertical_labels = tf.matmul(float_labels, vm)
       return vertical_labels
     elif FLAGS.support_type == "frequent":
-      num_frequents = FLAGS.num_frequents
+      num_supports = FLAGS.num_supports
       frequent_labels = tf.slice(labels, begin=[0, 0], size=[-1, num_frequents])
       return frequent_labels
     else:

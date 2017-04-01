@@ -49,9 +49,6 @@ flags.DEFINE_string("cnn_filter_sizes", "1,2,3", "Sizes of cnn filters.")
 flags.DEFINE_string("cnn_filter_nums", "256,256,256", "Numbers of every cnn filters.")
 flags.DEFINE_integer("cnn_pooling_k", 4, "The k value for max-k pooling.")
 
-flags.DEFINE_string("vertical_file", "resources/vertical.tsv", "Location of label-vertical mapping file.")
-flags.DEFINE_integer("num_supports", 25, "Number of total support categories.")
-flags.DEFINE_string("support_type", "vertical", "Support type: vertical or frequent.")
 
 import sys
 from os.path import dirname
