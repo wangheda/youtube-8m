@@ -19,9 +19,9 @@ import time
 
 import eval_util
 import losses
-import frame_level_models
-import video_level_models
+import labels_autoencoder
 import readers
+import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow import app
@@ -53,13 +53,16 @@ if __name__ == "__main__":
       "Otherwise, --train_data_pattern must be aggregated video-level "
       "features. The model must also be set appropriately (i.e. to read 3D "
       "batches VS 4D batches.")
+  flags.DEFINE_bool(
+      "frame_only", False,
+      "If set, then --train_data_pattern must be frame-level features. "
+      "Otherwise, --train_data_pattern must be aggregated video-level "
+      "features. The model must also be set appropriately (i.e. to read 3D "
+      "batches VS 4D batches.")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Models are defined "
       "in models.py.")
-  flags.DEFINE_bool(
-      "multitask", False,
-      "Whether to consider support_predictions")
   flags.DEFINE_bool(
       "start_new_model", False,
       "If set, this will not resume from a checkpoint and will instead create a"
@@ -67,6 +70,8 @@ if __name__ == "__main__":
 
   # Training flags.
   flags.DEFINE_integer("batch_size", 1024,
+                       "How many examples to process per batch for training.")
+  flags.DEFINE_integer("stride_size", 4,
                        "How many examples to process per batch for training.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Which loss function to use for training the model.")
@@ -82,24 +87,20 @@ if __name__ == "__main__":
   flags.DEFINE_float("learning_rate_decay_examples", 4000000,
                      "Multiply current learning rate by learning_rate_decay "
                      "every learning_rate_decay_examples.")
-  flags.DEFINE_integer("num_epochs", 5,
+  flags.DEFINE_integer("num_epochs", 1,
                        "How many passes to make over the dataset before "
                        "halting training.")
-  flags.DEFINE_float("keep_checkpoint_every_n_hours", 1.0,
-                       "How many hours before saving a new checkpoint")
- 
+
   # Other flags.
   flags.DEFINE_integer("num_readers", 8,
                        "How many threads to use for reading input files.")
   flags.DEFINE_string("optimizer", "AdamOptimizer",
                       "What optimizer class to use.")
-  flags.DEFINE_float("clip_gradient_norm", 1.0, "Norm to clip gradients to.")
+  flags.DEFINE_float("clip_gradient_norm", 0.1, "Norm to clip gradients to.")
   flags.DEFINE_bool(
       "log_device_placement", False,
       "Whether to write the device on which every op will run into the "
       "logs on startup.")
-  flags.DEFINE_integer("recall_at_n", 100,
-                       "N in recall@N.")
 
 def validate_class_name(flag_value, category, modules, expected_superclass):
   """Checks that the given string matches a class of the expected type.
@@ -236,30 +237,38 @@ def build_graph(reader,
           num_readers=num_readers,
           num_epochs=num_epochs))
   tf.summary.histogram("model/input_raw", model_input_raw)
-  
-  feature_dim = len(model_input_raw.get_shape()) - 1
 
-  model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
 
   with tf.name_scope("model"):
     result = model.create_model(
-        model_input,
+        labels_batch,
         num_frames=num_frames,
         vocab_size=reader.num_classes,
         labels=labels_batch)
-
+    parameters = model.get_forward_parameters()
     for variable in slim.get_model_variables():
       tf.summary.histogram(variable.op.name, variable)
 
     predictions = result["predictions"]
+    if predictions.get_shape().ndims==3:
+        predictions = tf.reshape(predictions,[-1,predictions.get_shape().as_list()[2]])
+        labels_batch = tf.reshape(labels_batch,[-1,labels_batch.get_shape().as_list()[2]])
+    if "bottleneck" in result.keys():
+        bottle_neck = result["bottleneck"]
+    else:
+        bottle_neck = tf.constant(0.0)
+    if "predictions_class" in result.keys():
+        predictions_class = result["predictions_class"]
+    else:
+        predictions_class = predictions
+
     if "loss" in result.keys():
       label_loss = result["loss"]
+    elif "predictions_class" in result.keys():
+      label_loss = label_loss_fn.calculate_loss_mix(predictions, predictions_class, labels_batch)
     else:
-      if FLAGS.multitask:
-        support_predictions = result["support_predictions"]
-        label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch)
-      else:
-        label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+      label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+
     tf.summary.scalar("label_loss", label_loss)
 
     if "regularization_loss" in result.keys():
@@ -294,13 +303,15 @@ def build_graph(reader,
         clip_gradient_norm=clip_gradient_norm)
 
     tf.add_to_collection("global_step", global_step)
-    tf.add_to_collection("loss", label_loss)
+    tf.add_to_collection("loss", final_loss)
+    tf.add_to_collection("reg_loss", reg_loss)
+    tf.add_to_collection("bottleneck", bottle_neck)
     tf.add_to_collection("predictions", predictions)
     tf.add_to_collection("input_batch_raw", model_input_raw)
-    tf.add_to_collection("input_batch", model_input)
     tf.add_to_collection("num_frames", num_frames)
     tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
     tf.add_to_collection("train_op", train_op)
+    tf.add_to_collection("parameters", parameters)
 
 
 class Trainer(object):
@@ -350,9 +361,11 @@ class Trainer(object):
 
         global_step = tf.get_collection("global_step")[0]
         loss = tf.get_collection("loss")[0]
+        reg_loss = tf.get_collection("reg_loss")[0]
         predictions = tf.get_collection("predictions")[0]
         labels = tf.get_collection("labels")[0]
         train_op = tf.get_collection("train_op")[0]
+        parameters = tf.get_collection("parameters")[0]
         init_op = tf.global_variables_initializer()
 
     sv = tf.train.Supervisor(
@@ -373,8 +386,8 @@ class Trainer(object):
         while not sv.should_stop():
 
           batch_start_time = time.time()
-          _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
-              [train_op, global_step, loss, predictions, labels])
+          _, global_step_val, loss_val, reg_loss_val, predictions_val, labels_val = sess.run(
+              [train_op, global_step, loss, reg_loss, predictions, labels])
           seconds_per_batch = time.time() - batch_start_time
 
           if self.is_master:
@@ -383,20 +396,13 @@ class Trainer(object):
                                                         labels_val)
             perr = eval_util.calculate_precision_at_equal_recall_rate(
                 predictions_val, labels_val)
-            recall = "N/A"
-            if False:
-              recall = eval_util.calculate_recall_at_n(
-                  predictions_val, labels_val, FLAGS.recall_at_n)
-              sv.summary_writer.add_summary(
-                  utils.MakeSummary("model/Training_Recall@%d" % FLAGS.recall_at_n, recall), global_step_val)
-              recall = "%.2f" % recall
             gap = eval_util.calculate_gap(predictions_val, labels_val)
 
             logging.info(
                 "%s: training step " + str(global_step_val) + "| Hit@1: " +
                 ("%.2f" % hit_at_one) + " PERR: " + ("%.2f" % perr) + " GAP: " +
-                ("%.2f" % gap) + " Recall@%d: " % FLAGS.recall_at_n +
-                recall + " Loss: " + str(loss_val),
+                ("%.2f" % gap) + " Loss: " + str(loss_val) +
+                " RegLoss: " + str(reg_loss_val),
                 task_as_string(self.task))
 
             sv.summary_writer.add_summary(
@@ -410,6 +416,10 @@ class Trainer(object):
                 utils.MakeSummary("global_step/Examples/Second",
                                   examples_per_second), global_step_val)
             sv.summary_writer.flush()
+
+        params = sess.run(parameters)
+        for i in range(len(params)):
+            np.savetxt(FLAGS.train_dir+'autoencoder_layer%d.model' % i,params[i])
 
       except tf.errors.OutOfRangeError:
         logging.info("%s: Done training -- epoch limit reached.",
@@ -481,15 +491,19 @@ class Trainer(object):
         FLAGS.feature_names, FLAGS.feature_sizes)
 
     if FLAGS.frame_features:
-      reader = readers.YT8MFrameFeatureReader(
-          feature_names=feature_names, feature_sizes=feature_sizes)
+      if FLAGS.frame_only:
+          reader = readers.YT8MFrameFeatureOnlyReader(
+              feature_names=feature_names, feature_sizes=feature_sizes)
+      else:
+          reader = readers.YT8MFrameFeatureReader(
+              feature_names=feature_names, feature_sizes=feature_sizes)
     else:
       reader = readers.YT8MAggregatedFeatureReader(
           feature_names=feature_names, feature_sizes=feature_sizes)
 
     # Find the model.
     model = find_class_by_name(FLAGS.model,
-                               [frame_level_models, video_level_models])()
+                               [labels_autoencoder])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
     optimizer_class = find_class_by_name(FLAGS.optimizer, [tf.train])
 
@@ -509,7 +523,7 @@ class Trainer(object):
 
     logging.info("%s: Built graph.", task_as_string(self.task))
 
-    return tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours)
+    return tf.train.Saver(max_to_keep=2, keep_checkpoint_every_n_hours=0.25)
 
 
 class ParameterServer(object):

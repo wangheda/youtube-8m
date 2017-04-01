@@ -30,7 +30,7 @@ class LstmMemoryChainModel(models.BaseModel):
     """
     lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
-    num_verticals = FLAGS.num_verticals
+    num_supports = FLAGS.num_supports
 
     ## Batch normalize the input
     stacked_lstm = tf.contrib.rnn.MultiRNNCell(
@@ -51,18 +51,18 @@ class LstmMemoryChainModel(models.BaseModel):
 
     aggregated_model = getattr(video_level_models,
                                FLAGS.video_level_classifier_model)
-    vertical_predictions = aggregated_model().create_model(
+    support_predictions = aggregated_model().create_model(
         model_input=final_state,
-        vocab_size=num_verticals,
+        vocab_size=num_supports,
         sub_scope="support",
         **unused_params)
-    vertical_predictions = vertical_predictions["predictions"]
-    main_state = tf.concat([final_state, vertical_predictions], axis=1)
+    support_predictions = support_predictions["predictions"]
+    main_state = tf.concat([final_state, support_predictions], axis=1)
     predictions = aggregated_model().create_model(
         model_input=main_state,
         vocab_size=vocab_size,
         sub_scope="main",
         **unused_params)
-    predictions["vertical_predictions"] = vertical_predictions
+    predictions["support_predictions"] = support_predictions
     return predictions
 
