@@ -27,6 +27,8 @@ flags.DEFINE_integer("num_classes", 4716,
                    "number of classes")
 flags.DEFINE_float("support_loss_percent", 0.1,
                    "the part that support loss (in multi-task scenario) take in the whole loss function.")
+flags.DEFINE_string("support_type", "vertical",
+                   "type of support label, vertical or frequent.")
 
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
