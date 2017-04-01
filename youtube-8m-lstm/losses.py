@@ -180,7 +180,7 @@ class MultiTaskLoss(BaseLoss):
       num_supports = FLAGS.num_supports
       vertical_file = FLAGS.vertical_file
       vertical_mapping = np.zeros([num_classes, num_supports], dtype=np.float32)
-      float_labels = tf.cast(labels, tf.float32)
+      float_labels = tf.cast(labels, dtype=tf.float32)
       with open(vertical_file) as F:
         for line in F:
           group = map(int, line.strip().split())
@@ -194,7 +194,8 @@ class MultiTaskLoss(BaseLoss):
       return vertical_labels
     elif FLAGS.support_type == "frequent":
       num_supports = FLAGS.num_supports
-      frequent_labels = tf.slice(labels, begin=[0, 0], size=[-1, num_frequents])
+      frequent_labels = tf.slice(labels, begin=[0, 0], size=[-1, num_supports])
+      frequent_labels = tf.cast(frequent_labels, dtype=tf.float32)
       return frequent_labels
     else:
       raise NotImplementedError()
