@@ -10,7 +10,7 @@ class ChainMoeModel(models.BaseModel):
   """A softmax over a mixture of logistic models (with L2 regularization)."""
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
-                   l2_penalty=1e-8, sub_scope="", **unused_params):
+                   l2_penalty=1e-8, sub_scope="", original_input=None, **unused_params):
     num_supports = FLAGS.num_supports
     support_predictions = self.sub_model(model_input, num_supports, sub_scope=sub_scope+"-support")
     main_input = tf.concat([model_input, support_predictions], axis=1)

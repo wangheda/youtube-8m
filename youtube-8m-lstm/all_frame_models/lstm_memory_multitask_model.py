@@ -52,11 +52,13 @@ class LstmMemoryMultitaskModel(models.BaseModel):
                                FLAGS.video_level_classifier_model)
     predictions = aggregated_model().create_model(
         model_input=final_state,
+        original_input=model_input,
         vocab_size=vocab_size,
         sub_scope="main",
         **unused_params)
     support_predictions = aggregated_model().create_model(
         model_input=final_state,
+        original_input=model_input,
         vocab_size=num_supports,
         sub_scope="support",
         **unused_params)

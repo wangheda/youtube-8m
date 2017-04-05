@@ -53,6 +53,7 @@ class LstmMemoryChainModel(models.BaseModel):
                                FLAGS.video_level_classifier_model)
     support_predictions = aggregated_model().create_model(
         model_input=final_state,
+        original_input=model_input,
         vocab_size=num_supports,
         sub_scope="support",
         **unused_params)
@@ -60,6 +61,7 @@ class LstmMemoryChainModel(models.BaseModel):
     main_state = tf.concat([final_state, support_predictions], axis=1)
     predictions = aggregated_model().create_model(
         model_input=main_state,
+        original_input=model_input,
         vocab_size=vocab_size,
         sub_scope="main",
         **unused_params)
