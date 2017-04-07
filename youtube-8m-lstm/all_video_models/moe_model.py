@@ -15,7 +15,8 @@ class MoeModel(models.BaseModel):
                    num_mixtures=None,
                    l2_penalty=1e-8,
                    sub_scope="",
-                   **unused_params):
+                   original_input=None, 
+				   **unused_params):
     """Creates a Mixture of (Logistic) Experts model.
 
      The model consists of a per-class softmax distribution over a

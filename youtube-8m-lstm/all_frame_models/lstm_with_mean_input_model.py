@@ -57,6 +57,7 @@ class LstmWithMeanInputModel(models.BaseModel):
                                FLAGS.video_level_classifier_model)
     predictions = aggregated_model().create_model(
         model_input=final_output,
+        original_input=model_input,
         vocab_size=vocab_size,
         **unused_params)
     return predictions

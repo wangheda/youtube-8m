@@ -6,21 +6,22 @@ from tensorflow import flags
 import tensorflow.contrib.slim as slim
 FLAGS = flags.FLAGS
 
-class ChainMainReluMoeModel(models.BaseModel):
+class ShortcutChainSupportReluMoeModel(models.BaseModel):
   """A softmax over a mixture of logistic models (with L2 regularization)."""
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
                    l2_penalty=1e-8, sub_scope="", original_input=None, **unused_params):
     num_supports = FLAGS.num_supports
     input_size = model_input.shape.as_list()[1]
-    support_predictions = self.sub_model(model_input, num_supports, sub_scope=sub_scope+"-support")
-    main_relu = slim.fully_connected(
-        model_input,
+    support_input = tf.reduce_mean(original_input, axis=1)
+    support_relu = slim.fully_connected(
+        support_input,
         input_size,
         activation_fn=tf.nn.relu,
         weights_regularizer=slim.l2_regularizer(l2_penalty),
         scope="main-relu-"+sub_scope)
-    main_input = tf.concat([main_relu, support_predictions], axis=1)
+    support_predictions = self.sub_model(support_relu, num_supports, sub_scope=sub_scope+"-support")
+    main_input = tf.concat([model_input, support_predictions], axis=1)
     main_predictions = self.sub_model(main_input, vocab_size, sub_scope=sub_scope+"-main")
     return {"predictions": main_predictions, "support_predictions": support_predictions}
 

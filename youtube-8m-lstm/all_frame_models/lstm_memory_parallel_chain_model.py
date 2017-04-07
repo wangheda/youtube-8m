@@ -29,7 +29,7 @@ class LstmMemoryParallelChainModel(models.BaseModel):
       'batch_size' x 'num_classes'.
     """
     lstm_size = int(FLAGS.lstm_cells)
-    support_lstm_size = lstm_size / 4
+    support_lstm_size = lstm_size / 2
     number_of_layers = FLAGS.lstm_layers
     num_supports = FLAGS.num_supports
     aggregated_model = getattr(video_level_models,
@@ -52,6 +52,7 @@ class LstmMemoryParallelChainModel(models.BaseModel):
 
     support_predictions = aggregated_model().create_model(
         model_input=support_final_state,
+        original_input=model_input,
         vocab_size=num_supports,
         sub_scope="support",
         **unused_params)
@@ -75,6 +76,7 @@ class LstmMemoryParallelChainModel(models.BaseModel):
     main_state = tf.concat([final_state, support_predictions], axis=1)
     predictions = aggregated_model().create_model(
         model_input=main_state,
+        original_input=model_input,
         vocab_size=vocab_size,
         sub_scope="main",
         **unused_params)

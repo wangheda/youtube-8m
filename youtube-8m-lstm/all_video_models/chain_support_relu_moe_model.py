@@ -10,7 +10,7 @@ class ChainSupportReluMoeModel(models.BaseModel):
   """A softmax over a mixture of logistic models (with L2 regularization)."""
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
-                   l2_penalty=1e-8, sub_scope="", **unused_params):
+                   l2_penalty=1e-8, sub_scope="", original_input=None, **unused_params):
     num_supports = FLAGS.num_supports
     input_size = model_input.shape.as_list()[1]
     support_relu = slim.fully_connected(

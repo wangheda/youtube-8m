@@ -82,6 +82,7 @@ class LstmMultiAttentionModel(models.BaseModel):
                                FLAGS.video_level_classifier_model)
     attention_output = aggregated_model().create_model(
         model_input=attention_input,
+        original_input=model_input,
         vocab_size=vocab_size,
         **unused_params)["predictions"]
     print attention_output

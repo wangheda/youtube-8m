@@ -78,6 +78,7 @@ class LstmAttentionModel(models.BaseModel):
                                FLAGS.video_level_classifier_model)
     return aggregated_model().create_model(
         model_input=final_state,
+        original_input=model_input,
         vocab_size=vocab_size,
         **unused_params)
 

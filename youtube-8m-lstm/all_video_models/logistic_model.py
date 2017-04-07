@@ -9,7 +9,7 @@ FLAGS = flags.FLAGS
 class LogisticModel(models.BaseModel):
   """Logistic model with L2 regularization."""
 
-  def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+  def create_model(self, model_input, vocab_size, l2_penalty=1e-8, original_input=None, **unused_params):
     """Creates a logistic model.
 
     Args:
