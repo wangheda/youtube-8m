@@ -21,6 +21,7 @@ import eval_util
 import losses
 import frame_level_models
 import video_level_models
+import feature_transform
 import readers
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -189,6 +190,7 @@ def build_graph(reader,
                 learning_rate_decay_examples=1000000,
                 learning_rate_decay=0.95,
                 optimizer_class=tf.train.AdamOptimizer,
+                transformer_class=feature_transform.DefaultTransformer,
                 clip_gradient_norm=1.0,
                 regularization_penalty=1,
                 num_readers=1,
@@ -236,10 +238,9 @@ def build_graph(reader,
           num_readers=num_readers,
           num_epochs=num_epochs))
   tf.summary.histogram("model/input_raw", model_input_raw)
-  
-  feature_dim = len(model_input_raw.get_shape()) - 1
 
-  model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+  feature_transformer = transformer_class()
+  model_input = feature_transformer.transform(model_input_raw, num_frames)
 
   with tf.name_scope("model"):
     result = model.create_model(
@@ -492,10 +493,12 @@ class Trainer(object):
                                [frame_level_models, video_level_models])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
     optimizer_class = find_class_by_name(FLAGS.optimizer, [tf.train])
+    transformer_class = find_class_by_name(FLAGS.feature_transformer, [feature_transform])
 
     build_graph(reader=reader,
                  model=model,
                  optimizer_class=optimizer_class,
+                 transformer_class=transformer_class,
                  clip_gradient_norm=FLAGS.clip_gradient_norm,
                  train_data_pattern=FLAGS.train_data_pattern,
                  label_loss_fn=label_loss_fn,
