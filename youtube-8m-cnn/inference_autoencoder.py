@@ -30,6 +30,7 @@ import losses
 import readers
 import utils
 import numpy as np
+import labels_autoencoder
 
 FLAGS = flags.FLAGS
 
@@ -116,7 +117,27 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
                             enqueue_many=True))
     return video_id_batch, video_batch, num_frames_batch
 
-def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
+def get_forward_parameters(vocab_size=4716):
+    t_vars = tf.trainable_variables()
+    h1_vars_weight = [var for var in t_vars if 'hidden_1' in var.name and 'weights' in var.name]
+    h1_vars_biases = [var for var in t_vars if 'hidden_1' in var.name and 'biases' in var.name]
+    h2_vars_weight = [var for var in t_vars if 'hidden_2' in var.name and 'weights' in var.name]
+    h2_vars_biases = [var for var in t_vars if 'hidden_2' in var.name and 'biases' in var.name]
+    o1_vars_weight = [var for var in t_vars if 'output_1' in var.name and 'weights' in var.name]
+    o1_vars_biases = [var for var in t_vars if 'output_1' in var.name and 'biases' in var.name]
+    o2_vars_weight = [var for var in t_vars if 'output_2' in var.name and 'weights' in var.name]
+    o2_vars_biases = [var for var in t_vars if 'output_2' in var.name and 'biases' in var.name]
+    h1_vars_biases = tf.reshape(h1_vars_biases[0],[1,FLAGS.hidden_size_1])
+    h2_vars_biases = tf.reshape(h2_vars_biases[0],[1,FLAGS.hidden_size_2])
+    o1_vars_biases = tf.reshape(o1_vars_biases[0],[1,FLAGS.hidden_size_1])
+    o2_vars_biases = tf.reshape(o2_vars_biases[0],[1,vocab_size])
+    vars_1 = tf.concat((h1_vars_weight[0],h1_vars_biases),axis=0)
+    vars_2 = tf.concat((h2_vars_weight[0],h2_vars_biases),axis=0)
+    vars_3 = tf.concat((o1_vars_weight[0],o1_vars_biases),axis=0)
+    vars_4 = tf.concat((o2_vars_weight[0],o2_vars_biases),axis=0)
+    return [vars_1,vars_2,vars_3,vars_4]
+
+def inference(reader,train_dir, data_pattern, out_file_location, batch_size, top_k):
   with tf.Session() as sess, gfile.Open(out_file_location, "w+") as out_file:
     video_id_batch, video_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
     if FLAGS.model_checkpoint_path:
@@ -131,7 +152,7 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     saver = tf.train.import_meta_graph(meta_graph_location, clear_devices=True)
     logging.info("restoring variables from " + latest_checkpoint)
     saver.restore(sess, latest_checkpoint)
-    parameters = tf.get_collection("parameters")[0]
+    parameters = get_forward_parameters(vocab_size=reader.num_classes)
 
     # Workaround for num_epochs issue.
     def set_up_init_ops(variables):

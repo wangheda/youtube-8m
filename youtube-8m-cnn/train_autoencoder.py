@@ -79,7 +79,7 @@ if __name__ == "__main__":
       "regularization_penalty", 1,
       "How much weight to give to the regularization loss (the label loss has "
       "a weight of 1).")
-  flags.DEFINE_float("base_learning_rate", 0.01,
+  flags.DEFINE_float("base_learning_rate", 0.001,
                      "Which learning rate to start with.")
   flags.DEFINE_float("learning_rate_decay", 0.95,
                      "Learning rate decay factor to be applied every "
@@ -87,7 +87,7 @@ if __name__ == "__main__":
   flags.DEFINE_float("learning_rate_decay_examples", 4000000,
                      "Multiply current learning rate by learning_rate_decay "
                      "every learning_rate_decay_examples.")
-  flags.DEFINE_integer("num_epochs", 1,
+  flags.DEFINE_integer("num_epochs", 5,
                        "How many passes to make over the dataset before "
                        "halting training.")
 
@@ -180,6 +180,25 @@ def find_class_by_name(name, modules):
   modules = [getattr(module, name, None) for module in modules]
   return next(a for a in modules if a)
 
+def get_forward_parameters(vocab_size=4716):
+    t_vars = tf.trainable_variables()
+    h1_vars_weight = [var for var in t_vars if 'hidden_1' in var.name and 'weights' in var.name]
+    h1_vars_biases = [var for var in t_vars if 'hidden_1' in var.name and 'biases' in var.name]
+    h2_vars_weight = [var for var in t_vars if 'hidden_2' in var.name and 'weights' in var.name]
+    h2_vars_biases = [var for var in t_vars if 'hidden_2' in var.name and 'biases' in var.name]
+    o1_vars_weight = [var for var in t_vars if 'output_1' in var.name and 'weights' in var.name]
+    o1_vars_biases = [var for var in t_vars if 'output_1' in var.name and 'biases' in var.name]
+    o2_vars_weight = [var for var in t_vars if 'output_2' in var.name and 'weights' in var.name]
+    o2_vars_biases = [var for var in t_vars if 'output_2' in var.name and 'biases' in var.name]
+    h1_vars_biases = tf.reshape(h1_vars_biases[0],[1,FLAGS.hidden_size_1])
+    h2_vars_biases = tf.reshape(h2_vars_biases[0],[1,FLAGS.hidden_size_2])
+    o1_vars_biases = tf.reshape(o1_vars_biases[0],[1,FLAGS.hidden_size_1])
+    o2_vars_biases = tf.reshape(o2_vars_biases[0],[1,vocab_size])
+    vars_1 = tf.concat((h1_vars_weight[0],h1_vars_biases),axis=0)
+    vars_2 = tf.concat((h2_vars_weight[0],h2_vars_biases),axis=0)
+    vars_3 = tf.concat((o1_vars_weight[0],o1_vars_biases),axis=0)
+    vars_4 = tf.concat((o2_vars_weight[0],o2_vars_biases),axis=0)
+    return [vars_1,vars_2,vars_3,vars_4]
 
 def build_graph(reader,
                 model,
@@ -245,7 +264,7 @@ def build_graph(reader,
         num_frames=num_frames,
         vocab_size=reader.num_classes,
         labels=labels_batch)
-    parameters = model.get_forward_parameters()
+    parameters = get_forward_parameters(vocab_size=reader.num_classes)
     for variable in slim.get_model_variables():
       tf.summary.histogram(variable.op.name, variable)
 
@@ -261,6 +280,11 @@ def build_graph(reader,
         predictions_class = result["predictions_class"]
     else:
         predictions_class = predictions
+
+    if "loss_sparse" in result.keys():
+        sparse_loss = result["loss_sparse"]
+    else:
+        sparse_loss = tf.constant(0.0)
 
     if "loss" in result.keys():
       label_loss = result["loss"]
@@ -295,7 +319,7 @@ def build_graph(reader,
           label_loss = tf.identity(label_loss)
 
     # Incorporate the L2 weight penalties etc.
-    final_loss = regularization_penalty * reg_loss + label_loss
+    final_loss = regularization_penalty * reg_loss + label_loss + sparse_loss
     train_op = slim.learning.create_train_op(
         final_loss,
         optimizer,
@@ -365,7 +389,7 @@ class Trainer(object):
         predictions = tf.get_collection("predictions")[0]
         labels = tf.get_collection("labels")[0]
         train_op = tf.get_collection("train_op")[0]
-        parameters = tf.get_collection("parameters")[0]
+        parameters = tf.get_collection("parameters")
         init_op = tf.global_variables_initializer()
 
     sv = tf.train.Supervisor(
