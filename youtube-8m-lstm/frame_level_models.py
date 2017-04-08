@@ -49,6 +49,9 @@ flags.DEFINE_string("cnn_filter_sizes", "1,2,3", "Sizes of cnn filters.")
 flags.DEFINE_string("cnn_filter_nums", "256,256,256", "Numbers of every cnn filters.")
 flags.DEFINE_integer("cnn_pooling_k", 4, "The k value for max-k pooling.")
 
+flags.DEFINE_string("lstm_normalization", "identical",
+                    "which normalization method")
+
 
 import sys
 from os.path import dirname
