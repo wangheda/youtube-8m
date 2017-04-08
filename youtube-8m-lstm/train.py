@@ -240,7 +240,7 @@ def build_graph(reader,
   tf.summary.histogram("model/input_raw", model_input_raw)
 
   feature_transformer = transformer_class()
-  model_input = feature_transformer.transform(model_input_raw, num_frames)
+  model_input = feature_transformer.transform(model_input_raw, num_frames=num_frames)
 
   with tf.name_scope("model"):
     result = model.create_model(
