@@ -12,6 +12,7 @@ from lstm_attention_model import *
 from lstm_divided_model import *
 from lstm_memory_model import *
 from cnn_lstm_memory_model import *
+from lstm_memory_normalization_model import *
 from lstm_model import *
 from lstm_multi_attention_model import *
 from lstm_multi_pooling_model import *
