@@ -55,6 +55,9 @@ flags.DEFINE_string("lstm_normalization", "identical",
 flags.DEFINE_integer("mm_label_embedding", 256,
                     "size of label embedding vector")
 
+flags.DEFINE_string("wide_and_deep_models", "FrameLevelLogisticModel,LstmMemoryModel",
+                    "size of label embedding vector")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:
