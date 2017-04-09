@@ -52,6 +52,8 @@ flags.DEFINE_integer("cnn_pooling_k", 4, "The k value for max-k pooling.")
 flags.DEFINE_string("lstm_normalization", "identical",
                     "which normalization method")
 
+flags.DEFINE_integer("mm_label_embedding", 256,
+                    "size of label embedding vector")
 
 import sys
 from os.path import dirname
