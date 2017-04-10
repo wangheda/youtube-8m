@@ -249,7 +249,7 @@ class BatchAgreementCrossEntropyLoss(BaseLoss):
           1 - float_labels) * tf.log(1 - predictions + epsilon)
       cross_entropy_loss = tf.negative(cross_entropy_loss)
       
-      positive_predictions = predictions * float_labels
+      positive_predictions = predictions * float_labels + 1.0 - float_labels
       min_pp = tf.reduce_min(positive_predictions)
 
       negative_predictions = predictions * (1.0 - float_labels)
@@ -273,6 +273,41 @@ class BatchAgreementCrossEntropyLoss(BaseLoss):
       weight_fp = tf.nn.sigmoid((predictions - center_fn) / false_range * 3.0) * (num_fn / float_batch_size) * false_positives
       
       weight = (weight_fn + weight_fp) * batch_agreement + 1.0
+      print weight
+      return tf.reduce_mean(tf.reduce_sum(weight * cross_entropy_loss, 1))
+
+class TopKBatchAgreementCrossEntropyLoss(BaseLoss):
+  """loss that exagerate those points that break the batch-wise order
+  """
+  def calculate_loss(self, predictions, labels, topk=20, **unused_params):
+    with tf.name_scope("loss_xent_batch"):
+      batch_agreement = FLAGS.batch_agreement
+      epsilon = 10e-6
+      float_batch_size = float(FLAGS.batch_size)
+
+      topk_predictions = tf.nn.top_k(predictions, k=20)
+      min_topk_predictions = tf.reduce_min(topk_predictions, axis=1, keep_dims=True)
+      topk_mask = tf.cast(predictions >= min_topk_predictions, dtype=tf.float32)
+
+      float_labels = tf.cast(labels, tf.float32)
+      cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
+          1 - float_labels) * tf.log(1 - predictions + epsilon)
+      cross_entropy_loss = tf.negative(cross_entropy_loss)
+      
+      # minimum positive predictions in topk
+      positive_predictions = (predictions * float_labels * topk_mask) + 1.0 - (float_labels * topk_mask)
+      min_pp = tf.reduce_min(positive_predictions)
+
+      # maximum negative predictions
+      negative_predictions = predictions * (1.0 - float_labels)
+      max_np = tf.reduce_max(negative_predictions)
+
+      # 1s that fall under 0s
+      false_negatives = tf.cast(predictions < max_np, tf.float32) * float_labels
+      # 0s that grow over 1s in topk
+      false_positives = tf.cast(predictions > min_pp, tf.float32) * (1.0 - float_labels)
+
+      weight = (false_negatives + false_positives) * batch_agreement + 1.0
       print weight
       return tf.reduce_mean(tf.reduce_sum(weight * cross_entropy_loss, 1))
 
