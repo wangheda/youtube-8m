@@ -49,6 +49,14 @@ flags.DEFINE_string("cnn_filter_sizes", "1,2,3", "Sizes of cnn filters.")
 flags.DEFINE_string("cnn_filter_nums", "256,256,256", "Numbers of every cnn filters.")
 flags.DEFINE_integer("cnn_pooling_k", 4, "The k value for max-k pooling.")
 
+flags.DEFINE_string("lstm_normalization", "identical",
+                    "which normalization method")
+
+flags.DEFINE_integer("mm_label_embedding", 256,
+                    "size of label embedding vector")
+
+flags.DEFINE_string("wide_and_deep_models", "FrameLevelLogisticModel,LstmMemoryModel",
+                    "size of label embedding vector")
 
 import sys
 from os.path import dirname

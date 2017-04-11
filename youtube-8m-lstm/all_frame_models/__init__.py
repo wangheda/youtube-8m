@@ -11,7 +11,10 @@ from lstm_attention_lstm_model import *
 from lstm_attention_model import *
 from lstm_divided_model import *
 from lstm_memory_model import *
+from lstm_parallel_memory_model import *
 from cnn_lstm_memory_model import *
+from cnn_lstm_memory_normalization_model import *
+from mm_lstm_memory_model import *
 from lstm_memory_normalization_model import *
 from lstm_model import *
 from lstm_multi_attention_model import *
@@ -26,3 +29,5 @@ from lstm_memory_multitask_model import *
 from lstm_memory_chain_model import *
 from lstm_memory_input_chain_model import *
 from lstm_memory_parallel_chain_model import *
+
+from wide_and_deep_model import *
