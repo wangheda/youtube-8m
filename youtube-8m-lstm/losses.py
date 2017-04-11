@@ -285,7 +285,7 @@ class TopKBatchAgreementCrossEntropyLoss(BaseLoss):
       epsilon = 10e-6
       float_batch_size = float(FLAGS.batch_size)
 
-      topk_predictions = tf.nn.top_k(predictions, k=20)
+      topk_predictions, _ = tf.nn.top_k(predictions, k=20)
       min_topk_predictions = tf.reduce_min(topk_predictions, axis=1, keep_dims=True)
       topk_mask = tf.cast(predictions >= min_topk_predictions, dtype=tf.float32)
 
@@ -302,10 +302,10 @@ class TopKBatchAgreementCrossEntropyLoss(BaseLoss):
       negative_predictions = predictions * (1.0 - float_labels)
       max_np = tf.reduce_max(negative_predictions)
 
-      # 1s that fall under 0s
-      false_negatives = tf.cast(predictions < max_np, tf.float32) * float_labels
-      # 0s that grow over 1s in topk
-      false_positives = tf.cast(predictions > min_pp, tf.float32) * (1.0 - float_labels)
+      # 1s that fall under top-k
+      false_negatives = tf.cast(predictions < min_topk_predictions, tf.float32) * float_labels
+      # 0s that grow over 1s in top-k
+      false_positives = tf.cast(predictions > min_pp, tf.float32) * (1.0 - float_labels) * topk_mask
 
       weight = (false_negatives + false_positives) * batch_agreement + 1.0
       print weight
