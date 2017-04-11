@@ -19,6 +19,7 @@ import eval_util
 import losses
 import frame_level_models
 import video_level_models
+import feature_transform
 import readers
 import tensorflow as tf
 from tensorflow import app
@@ -123,6 +124,7 @@ def build_graph(reader,
                 eval_data_pattern,
                 label_loss_fn,
                 batch_size=1024,
+                transformer_class=feature_transform.DefaultTransformer,
                 num_readers=1):
   """Creates the Tensorflow graph for evaluation.
 
@@ -148,7 +150,8 @@ def build_graph(reader,
   feature_dim = len(model_input_raw.get_shape()) - 1
 
   # Normalize input features.
-  model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+  feature_transformer = transformer_class()
+  model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
 
   with tf.name_scope("model"):
     result = model.create_model(model_input,
@@ -299,6 +302,7 @@ def evaluate():
     model = find_class_by_name(FLAGS.model,
         [frame_level_models, video_level_models])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
+    transformer_class = find_class_by_name(FLAGS.feature_transformer, [feature_transform])
 
     if FLAGS.eval_data_pattern is "":
       raise IOError("'eval_data_pattern' was not specified. " +
@@ -310,6 +314,7 @@ def evaluate():
         eval_data_pattern=FLAGS.eval_data_pattern,
         label_loss_fn=label_loss_fn,
         num_readers=FLAGS.num_readers,
+        transformer_class=transformer_class,
         batch_size=FLAGS.batch_size)
     logging.info("built evaluation graph")
     video_id_batch = tf.get_collection("video_id_batch")[0]

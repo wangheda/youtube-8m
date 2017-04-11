@@ -21,6 +21,7 @@ import eval_util
 import losses
 import frame_level_models
 import video_level_models
+import data_augmentation
 import feature_transform
 import readers
 import tensorflow as tf
@@ -191,6 +192,7 @@ def build_graph(reader,
                 learning_rate_decay=0.95,
                 optimizer_class=tf.train.AdamOptimizer,
                 transformer_class=feature_transform.DefaultTransformer,
+                augmenter_class=data_augmentation.DefaultAugmenter,
                 clip_gradient_norm=1.0,
                 regularization_penalty=1,
                 num_readers=1,
@@ -237,10 +239,15 @@ def build_graph(reader,
           batch_size=batch_size,
           num_readers=num_readers,
           num_epochs=num_epochs))
+
+  # data augmentation, will not persist in inference
+  data_augmenter = augmenter_class()
+  model_input, labels_batch, num_frames = data_augmenter.augment(model_input_raw, num_frames=num_frames, labels_batch=labels_batch)
+
   tf.summary.histogram("model/input_raw", model_input_raw)
 
   feature_transformer = transformer_class()
-  model_input = feature_transformer.transform(model_input_raw, num_frames=num_frames)
+  model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
 
   with tf.name_scope("model"):
     result = model.create_model(
@@ -494,6 +501,7 @@ class Trainer(object):
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
     optimizer_class = find_class_by_name(FLAGS.optimizer, [tf.train])
     transformer_class = find_class_by_name(FLAGS.feature_transformer, [feature_transform])
+    augmenter_class = find_class_by_name(FLAGS.data_augmenter, [data_augmentation])
 
     build_graph(reader=reader,
                  model=model,

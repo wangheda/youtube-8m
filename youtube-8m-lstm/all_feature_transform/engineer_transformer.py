@@ -21,7 +21,7 @@ class EngineerTransformer:
       else:
         feature_list.append(model_input_raw)
     model_input = tf.nn.l2_normalize(tf.concat(model_input_raw, axis=feature_dim), feature_dim)
-    return model_input
+    return model_input, num_frames
 
   def mask(self, model_input_raw, num_frames):
     max_frames = model_input_raw.get_shape().as_list()[1]
