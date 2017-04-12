@@ -210,6 +210,8 @@ class MultiTaskLoss(BaseLoss):
       frequent_labels = tf.slice(labels, begin=[0, 0], size=[-1, num_frequents])
       frequent_labels = tf.cast(frequent_labels, dtype=tf.float32)
       return frequent_labels
+    elif support_type == "label":
+      return labels
     else:
       raise NotImplementedError()
 

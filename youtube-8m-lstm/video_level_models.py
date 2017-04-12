@@ -20,6 +20,13 @@ flags.DEFINE_integer(
     "moe_num_mixtures", 2,
     "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
 
+flags.DEFINE_integer(
+    "deep_chain_layers", 3,
+    "The number of layers used for DeepChainModel")
+flags.DEFINE_integer(
+    "deep_chain_relu_cells", 200,
+    "The number of relu cells used for DeepChainModel")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:
