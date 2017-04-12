@@ -308,6 +308,7 @@ class TopKBatchAgreementCrossEntropyLoss(BaseLoss):
       false_positives = tf.cast(predictions > min_pp, tf.float32) * (1.0 - float_labels) * topk_mask
 
       weight = (false_negatives + false_positives) * batch_agreement + 1.0
+      weight = tf.stop_gradient(weight)
       print weight
       return tf.reduce_mean(tf.reduce_sum(weight * cross_entropy_loss, 1))
 
