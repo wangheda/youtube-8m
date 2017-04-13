@@ -13,6 +13,7 @@ from lstm_divided_model import *
 from lstm_memory_model import *
 from lstm_parallel_memory_model import *
 from cnn_lstm_memory_model import *
+from cnn_lstm_memory_multitask_model import *
 from cnn_lstm_memory_normalization_model import *
 from mm_lstm_memory_model import *
 from lstm_memory_normalization_model import *
