@@ -27,6 +27,13 @@ flags.DEFINE_integer(
     "deep_chain_relu_cells", 200,
     "The number of relu cells used for DeepChainModel")
 
+flags.DEFINE_integer(
+    "hidden_chain_layers", 4,
+    "The number of layers used for HiddenChainModel")
+flags.DEFINE_integer(
+    "hidden_chain_relu_cells", 256,
+    "The number of relu cells used for HiddenChainModel")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:
