@@ -56,6 +56,7 @@ class CnnLstmMemoryMultiTaskModel(models.BaseModel):
     """
     lstm_size = int(FLAGS.lstm_cells)
     number_of_layers = FLAGS.lstm_layers
+    max_frames = model_input.get_shape().as_list()[1]
 
     cnn_output = self.cnn(model_input, num_filters=[1024,1024,1024], filter_sizes=[1,2,3])
     normalized_cnn_output = tf.nn.l2_normalize(cnn_output, dim=2)
@@ -77,10 +78,13 @@ class CnnLstmMemoryMultiTaskModel(models.BaseModel):
                                          dtype=tf.float32)
       final_state = tf.concat(map(lambda x: x.c, state), axis = 1)
 
+    mask = self.get_mask(max_frames, num_frames)
+    mean_cnn_output = tf.einsum("ijk,ij->ik", normalized_cnn_output, mask) \
+                      / tf.expand_dims(tf.cast(num_frames, dtype=tf.float32), dim=1)
     support_model = getattr(video_level_models,
                                FLAGS.video_level_classifier_support_model)
     support_predictions = support_model().create_model(
-        model_input=normalized_cnn_output,
+        model_input=mean_cnn_output,
         original_input=model_input,
         vocab_size=vocab_size,
         num_mixtures=2,
@@ -98,3 +102,16 @@ class CnnLstmMemoryMultiTaskModel(models.BaseModel):
     return {"predictions": predictions["predictions"], 
             "support_predictions": support_predictions["predictions"]}
 
+  def get_mask(self, max_frames, num_frames):
+    mask_array = []
+    for i in xrange(max_frames + 1):
+      tmp = [0.0] * max_frames 
+      for j in xrange(i):
+        tmp[j] = 1.0
+      mask_array.append(tmp)
+    mask_array = np.array(mask_array)
+    mask_init = tf.constant_initializer(mask_array)
+    mask_emb = tf.get_variable("mask_emb", shape = [max_frames + 1, max_frames], 
+            dtype = tf.float32, trainable = False, initializer = mask_init)
+    mask = tf.nn.embedding_lookup(mask_emb, num_frames)
+    return mask
