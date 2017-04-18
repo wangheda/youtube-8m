@@ -261,6 +261,7 @@ def build_graph(reader,
       noise_level_tensor = tf.placeholder_with_default(0.0, shape=[], name="noise_level")
     else:
       noise_level_tensor = None
+
     if FLAGS.dropout:
       keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
       result = model.create_model(
@@ -544,6 +545,7 @@ class Trainer(object):
     build_graph(reader=reader,
                  model=model,
                  optimizer_class=optimizer_class,
+                 augmenter_class=augmenter_class,
                  transformer_class=transformer_class,
                  clip_gradient_norm=FLAGS.clip_gradient_norm,
                  train_data_pattern=FLAGS.train_data_pattern,
