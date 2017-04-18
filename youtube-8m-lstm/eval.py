@@ -72,6 +72,11 @@ if __name__ == "__main__":
   flags.DEFINE_bool(
       "multitask", False,
       "Whether to consider support_predictions")
+  flags.DEFINE_bool(
+      "dropout", False,
+      "Whether to consider dropout")
+  flags.DEFINE_float("keep_prob", 1.0, 
+      "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
 
 
 def find_class_by_name(name, modules):
@@ -225,6 +230,8 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
     sess.run([tf.local_variables_initializer()])
 
     # Start the queue runners.
+    if FLAGS.dropout:
+      keep_prob_tensor = tf.get_collection("keep_prob")[0]
     fetches = [video_id_batch, prediction_batch, label_batch, loss, summary_op]
     coord = tf.train.Coordinator()
     try:
@@ -241,8 +248,12 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
       examples_processed = 0
       while not coord.should_stop():
         batch_start_time = time.time()
-        _, predictions_val, labels_val, loss_val, summary_val = sess.run(
-            fetches)
+        if FLAGS.dropout:
+          _, predictions_val, labels_val, loss_val, summary_val = sess.run(
+              fetches, feed_dict={keep_prob_tensor: FLAGS.keep_prob})
+        else:
+          _, predictions_val, labels_val, loss_val, summary_val = sess.run(
+              fetches)
         seconds_per_batch = time.time() - batch_start_time
         example_per_second = labels_val.shape[0] / seconds_per_batch
         examples_processed += labels_val.shape[0]

@@ -66,6 +66,13 @@ if __name__ == '__main__':
   flags.DEFINE_integer("top_k", 20,
                        "How many predictions to output per video.")
 
+  flags.DEFINE_bool(
+      "dropout", False,
+      "Whether to consider dropout")
+  flags.DEFINE_float("keep_prob", 1.0, 
+      "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
+
+
 def format_lines(video_ids, predictions, top_k):
   batch_size = len(video_ids)
   for video_index in range(batch_size):
@@ -133,6 +140,8 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     input_tensor = tf.get_collection("input_batch_raw")[0]
     num_frames_tensor = tf.get_collection("num_frames")[0]
     predictions_tensor = tf.get_collection("predictions")[0]
+    if FLAGS.dropout:
+      keep_prob_tensor = tf.get_collection("keep_prob")[0]
 
     # Workaround for num_epochs issue.
     def set_up_init_ops(variables):
@@ -156,7 +165,10 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     try:
       while not coord.should_stop():
           video_id_batch_val, video_batch_val,num_frames_batch_val = sess.run([video_id_batch, video_batch, num_frames_batch])
-          predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
+          if FLAGS.dropout:
+            predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val, keep_prob_tensor: FLAGS.keep_prob})
+          else:
+            predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
           now = time.time()
           num_examples_processed += len(video_batch_val)
           num_classes = predictions_val.shape[1]
