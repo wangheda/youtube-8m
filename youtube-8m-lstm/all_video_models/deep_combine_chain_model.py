@@ -10,7 +10,8 @@ class DeepCombineChainModel(models.BaseModel):
   """A softmax over a mixture of logistic models (with L2 regularization)."""
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
-                   l2_penalty=1e-8, sub_scope="", original_input=None, **unused_params):
+                   l2_penalty=1e-8, sub_scope="", original_input=None, 
+                   dropout=False, keep_prob=None, **unused_params):
     num_supports = FLAGS.num_supports
     num_layers = FLAGS.deep_chain_layers
     relu_cells = FLAGS.deep_chain_relu_cells
@@ -18,13 +19,18 @@ class DeepCombineChainModel(models.BaseModel):
     next_input = model_input
     support_predictions = []
     for layer in xrange(num_layers):
-      sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer)
-      sub_relu = slim.fully_connected(
+      sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer, dropout=dropout, keep_prob=keep_prob)
+      sub_activation = slim.fully_connected(
           sub_prediction,
           relu_cells,
-          activation_fn=tf.nn.relu,
+          activation_fn=None,
           weights_regularizer=slim.l2_regularizer(l2_penalty),
           scope=sub_scope+"relu-%d"%layer)
+
+      if dropout:
+        sub_activation = tf.nn.dropout(sub_activation, keep_prob=keep_prob)
+
+      sub_relu = tf.nn.relu(sub_activation)
       relu_norm = tf.nn.l2_normalize(sub_relu, dim=1)
       next_input = tf.concat([next_input, relu_norm], axis=1)
       support_predictions.append(sub_prediction)
@@ -33,7 +39,8 @@ class DeepCombineChainModel(models.BaseModel):
     return {"predictions": main_predictions, "support_predictions": support_predictions}
 
   def sub_model(self, model_input, vocab_size, num_mixtures=None, 
-                l2_penalty=1e-8, sub_scope="", **unused_params):
+                l2_penalty=1e-8, sub_scope="", 
+                dropout=False, keep_prob=None, **unused_params):
     num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
 
     gate_activations = slim.fully_connected(
@@ -49,6 +56,9 @@ class DeepCombineChainModel(models.BaseModel):
         activation_fn=None,
         weights_regularizer=slim.l2_regularizer(l2_penalty),
         scope="experts-"+sub_scope)
+
+    if dropout:
+      gate_activations = tf.nn.dropout(gate_activations, keep_prob=keep_prob)
 
     gating_distribution = tf.nn.softmax(tf.reshape(
         gate_activations,

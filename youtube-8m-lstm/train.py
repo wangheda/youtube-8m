@@ -102,6 +102,11 @@ if __name__ == "__main__":
       "logs on startup.")
   flags.DEFINE_integer("recall_at_n", 100,
                        "N in recall@N.")
+  flags.DEFINE_bool(
+      "dropout", False,
+      "Whether to consider dropout")
+  flags.DEFINE_float("keep_prob", 1.0, 
+      "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
 
 def validate_class_name(flag_value, category, modules, expected_superclass):
   """Checks that the given string matches a class of the expected type.
@@ -250,11 +255,21 @@ def build_graph(reader,
   model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
 
   with tf.name_scope("model"):
-    result = model.create_model(
-        model_input,
-        num_frames=num_frames,
-        vocab_size=reader.num_classes,
-        labels=labels_batch)
+    if FLAGS.dropout:
+      keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
+      result = model.create_model(
+          model_input,
+          num_frames=num_frames,
+          vocab_size=reader.num_classes,
+          labels=labels_batch,
+          dropout=FLAGS.dropout,
+          keep_prob=keep_prob_tensor)
+    else:
+      result = model.create_model(
+          model_input,
+          num_frames=num_frames,
+          vocab_size=reader.num_classes,
+          labels=labels_batch)
 
     for variable in slim.get_model_variables():
       tf.summary.histogram(variable.op.name, variable)
@@ -309,6 +324,8 @@ def build_graph(reader,
     tf.add_to_collection("num_frames", num_frames)
     tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
     tf.add_to_collection("train_op", train_op)
+    if FLAGS.dropout:
+      tf.add_to_collection("keep_prob", keep_prob_tensor)
 
 
 class Trainer(object):
@@ -363,6 +380,9 @@ class Trainer(object):
         train_op = tf.get_collection("train_op")[0]
         init_op = tf.global_variables_initializer()
 
+        if FLAGS.dropout:
+          keep_prob_tensor = tf.get_collection("keep_prob")[0]
+
     sv = tf.train.Supervisor(
         graph,
         logdir=self.train_dir,
@@ -381,8 +401,12 @@ class Trainer(object):
         while not sv.should_stop():
 
           batch_start_time = time.time()
-          _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
-              [train_op, global_step, loss, predictions, labels])
+          if FLAGS.dropout:
+            _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
+                [train_op, global_step, loss, predictions, labels], feed_dict={keep_prob_tensor: FLAGS.keep_prob})
+          else:
+            _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
+                [train_op, global_step, loss, predictions, labels])
           seconds_per_batch = time.time() - batch_start_time
 
           if self.is_master:
