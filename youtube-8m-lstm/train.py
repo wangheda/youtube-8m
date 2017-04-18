@@ -107,6 +107,8 @@ if __name__ == "__main__":
       "Whether to consider dropout")
   flags.DEFINE_float("keep_prob", 1.0, 
       "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
+  flags.DEFINE_float("noise_level", 0.0, 
+      "standard deviation of noise (added to hidden nodes)")
 
 def validate_class_name(flag_value, category, modules, expected_superclass):
   """Checks that the given string matches a class of the expected type.
@@ -255,6 +257,10 @@ def build_graph(reader,
   model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
 
   with tf.name_scope("model"):
+    if FLAGS.noise_level > 0:
+      noise_level_tensor = tf.placeholder_with_default(0.0, shape=[], name="noise_level")
+    else:
+      noise_level_tensor = None
     if FLAGS.dropout:
       keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
       result = model.create_model(
@@ -263,13 +269,15 @@ def build_graph(reader,
           vocab_size=reader.num_classes,
           labels=labels_batch,
           dropout=FLAGS.dropout,
-          keep_prob=keep_prob_tensor)
+          keep_prob=keep_prob_tensor,
+          noise_level=noise_level_tensor)
     else:
       result = model.create_model(
           model_input,
           num_frames=num_frames,
           vocab_size=reader.num_classes,
-          labels=labels_batch)
+          labels=labels_batch,
+          noise_level=noise_level_tensor)
 
     for variable in slim.get_model_variables():
       tf.summary.histogram(variable.op.name, variable)
@@ -326,6 +334,8 @@ def build_graph(reader,
     tf.add_to_collection("train_op", train_op)
     if FLAGS.dropout:
       tf.add_to_collection("keep_prob", keep_prob_tensor)
+    if FLAGS.noise_level > 0:
+      tf.add_to_collection("noise_level", noise_level_tensor)
 
 
 class Trainer(object):
@@ -382,6 +392,8 @@ class Trainer(object):
 
         if FLAGS.dropout:
           keep_prob_tensor = tf.get_collection("keep_prob")[0]
+        if FLAGS.noise_level > 0:
+          noise_level_tensor = tf.get_collection("noise_level")[0]
 
     sv = tf.train.Supervisor(
         graph,
@@ -401,12 +413,14 @@ class Trainer(object):
         while not sv.should_stop():
 
           batch_start_time = time.time()
+          custom_feed = {}
           if FLAGS.dropout:
-            _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
-                [train_op, global_step, loss, predictions, labels], feed_dict={keep_prob_tensor: FLAGS.keep_prob})
-          else:
-            _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
-                [train_op, global_step, loss, predictions, labels])
+            custom_feed[keep_prob_tensor] = FLAGS.keep_prob
+          if FLAGS.noise_level > 0:
+            custom_feed[noise_level_tensor] = FLAGS.noise_level
+
+          _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
+              [train_op, global_step, loss, predictions, labels], feed_dict=custom_feed)
           seconds_per_batch = time.time() - batch_start_time
 
           if self.is_master:

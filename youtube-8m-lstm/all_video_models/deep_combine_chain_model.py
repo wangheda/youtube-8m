@@ -11,7 +11,8 @@ class DeepCombineChainModel(models.BaseModel):
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
                    l2_penalty=1e-8, sub_scope="", original_input=None, 
-                   dropout=False, keep_prob=None, **unused_params):
+                   dropout=False, keep_prob=None, noise_level=None,
+                   **unused_params):
     num_supports = FLAGS.num_supports
     num_layers = FLAGS.deep_chain_layers
     relu_cells = FLAGS.deep_chain_relu_cells
@@ -19,7 +20,7 @@ class DeepCombineChainModel(models.BaseModel):
     next_input = model_input
     support_predictions = []
     for layer in xrange(num_layers):
-      sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer, dropout=dropout, keep_prob=keep_prob)
+      sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer, dropout=dropout, keep_prob=keep_prob, noise_level=noise_level)
       sub_activation = slim.fully_connected(
           sub_prediction,
           relu_cells,
@@ -27,6 +28,8 @@ class DeepCombineChainModel(models.BaseModel):
           weights_regularizer=slim.l2_regularizer(l2_penalty),
           scope=sub_scope+"relu-%d"%layer)
 
+      if noise_level is not None:
+        sub_activation = sub_activation + tf.random_normal(sub_activation.shape, mean=0.0, stddev=noise_level)
       if dropout:
         sub_activation = tf.nn.dropout(sub_activation, keep_prob=keep_prob)
 
@@ -40,7 +43,8 @@ class DeepCombineChainModel(models.BaseModel):
 
   def sub_model(self, model_input, vocab_size, num_mixtures=None, 
                 l2_penalty=1e-8, sub_scope="", 
-                dropout=False, keep_prob=None, **unused_params):
+                dropout=False, keep_prob=None, noise_level=None,
+                **unused_params):
     num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
 
     gate_activations = slim.fully_connected(
