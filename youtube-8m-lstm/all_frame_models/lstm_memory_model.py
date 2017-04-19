@@ -61,7 +61,7 @@ class LstmMemoryModel(models.BaseModel):
       final_state = tf.concat(map(lambda x: x.c, state), axis = 1)
 
     if noise_level is not None:
-      final_state = final_state + tf.random_normal(tf.shape(finale_state), mean=0.0, stddev=noise_level)
+      final_state = final_state + tf.random_normal(tf.shape(final_state), mean=0.0, stddev=noise_level)
 
     aggregated_model = getattr(video_level_models,
                                FLAGS.video_level_classifier_model)
