@@ -74,5 +74,6 @@ class DeepChainModel(models.BaseModel):
     code_2 = tf.cast(num_frames > 120, dtype=tf.int32) * tf.cast(num_frames <= 180, dtype=tf.int32)
     code_3 = tf.cast(num_frames > 180, dtype=tf.int32) * tf.cast(num_frames <= 240, dtype=tf.int32)
     code_4 = tf.cast(num_frames > 240, dtype=tf.int32)
-    length_code = tf.cast(tf.concat([code_0, code_1, code_2, code_3, code_4], axis=1), dtype=tf.float32)
+    codes = map(lambda x: tf.expand_dims(x, dim=1), [code_0, code_1, code_2, code_3, code_4])
+    length_code = tf.cast(tf.concat(codes, axis=1), dtype=tf.float32)
     return length_code

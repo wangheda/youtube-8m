@@ -69,5 +69,6 @@ class LstmMemoryModel(models.BaseModel):
         model_input=final_state,
         original_input=model_input,
         vocab_size=vocab_size,
+        num_frames=num_frames,
         **unused_params)
 
