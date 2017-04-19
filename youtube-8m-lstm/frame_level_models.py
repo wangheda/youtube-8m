@@ -62,6 +62,9 @@ flags.DEFINE_integer("mm_label_embedding", 256,
 flags.DEFINE_string("wide_and_deep_models", "FrameLevelLogisticModel,LstmMemoryModel",
                     "size of label embedding vector")
 
+flags.DEFINE_integer("deep_cnn_base_size", 128,
+                     "basic cnn size")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:
