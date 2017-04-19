@@ -44,8 +44,9 @@ flags.DEFINE_bool("label_smoothing", False,
 def smoothing(labels,  epsilon=0.1):
   print "label smoothing for", labels
   float_labels = tf.cast(labels, tf.float32)
+  num_labels = tf.reduce_sum(float_labels, axis=1, keep_dims=True)
   K = float_labels.get_shape().as_list()[1]
-  prior = 1.0 / K
+  prior = num_labels / K
   smooth_labels = float_labels * (1.0 - epsilon) + prior * epsilon
   return smooth_labels
 
