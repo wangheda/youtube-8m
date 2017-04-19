@@ -16,6 +16,7 @@ class DeepCombineChainModel(models.BaseModel):
     num_supports = FLAGS.num_supports
     num_layers = FLAGS.deep_chain_layers
     relu_cells = FLAGS.deep_chain_relu_cells
+    relu_type = FLAGS.deep_chain_relu_type
 
     next_input = model_input
     support_predictions = []
@@ -31,7 +32,11 @@ class DeepCombineChainModel(models.BaseModel):
       if noise_level is not None:
         sub_activation = sub_activation + tf.random_normal(tf.shape(sub_activation), mean=0.0, stddev=noise_level)
 
-      sub_relu = tf.nn.relu(sub_activation)
+      if relu_type == "elu":
+        sub_relu = tf.nn.elu(sub_activation)
+      else: # default: relu
+        sub_relu = tf.nn.relu(sub_activation)
+
       relu_norm = tf.nn.l2_normalize(sub_relu, dim=1)
       next_input = tf.concat([next_input, relu_norm], axis=1)
       support_predictions.append(sub_prediction)
