@@ -12,10 +12,17 @@ class DeepCombineChainModel(models.BaseModel):
   def create_model(self, model_input, vocab_size, num_mixtures=None,
                    l2_penalty=1e-8, sub_scope="", original_input=None, 
                    dropout=False, keep_prob=None, noise_level=None,
+                   num_frames=None,
                    **unused_params):
     num_supports = FLAGS.num_supports
     num_layers = FLAGS.deep_chain_layers
     relu_cells = FLAGS.deep_chain_relu_cells
+    relu_type = FLAGS.deep_chain_relu_type
+    use_length = FLAGS.deep_chain_use_length
+
+    if use_length:
+      print "using length as feature"
+      model_input = tf.concat([model_input, self.get_length_code(num_frames)], axis=1)
 
     next_input = model_input
     support_predictions = []
@@ -29,9 +36,14 @@ class DeepCombineChainModel(models.BaseModel):
           scope=sub_scope+"relu-%d"%layer)
 
       if noise_level is not None:
-        sub_activation = sub_activation + tf.random_normal(sub_activation.shape, mean=0.0, stddev=noise_level)
+        print "adding noise to sub_activation, level = ", noise_level
+        sub_activation = sub_activation + tf.random_normal(tf.shape(sub_activation), mean=0.0, stddev=noise_level)
 
-      sub_relu = tf.nn.relu(sub_activation)
+      if relu_type == "elu":
+        sub_relu = tf.nn.elu(sub_activation)
+      else: # default: relu
+        sub_relu = tf.nn.relu(sub_activation)
+
       relu_norm = tf.nn.l2_normalize(sub_relu, dim=1)
       next_input = tf.concat([next_input, relu_norm], axis=1)
       support_predictions.append(sub_prediction)
@@ -74,3 +86,13 @@ class DeepCombineChainModel(models.BaseModel):
     final_probabilities = tf.reshape(final_probabilities_by_class_and_batch,
                                      [-1, vocab_size])
     return final_probabilities
+
+  def get_length_code(self, num_frames):
+    code_0 = tf.cast(num_frames <= 60, dtype=tf.int32)
+    code_1 = tf.cast(num_frames > 60, dtype=tf.int32) * tf.cast(num_frames <= 120, dtype=tf.int32)
+    code_2 = tf.cast(num_frames > 120, dtype=tf.int32) * tf.cast(num_frames <= 180, dtype=tf.int32)
+    code_3 = tf.cast(num_frames > 180, dtype=tf.int32) * tf.cast(num_frames <= 240, dtype=tf.int32)
+    code_4 = tf.cast(num_frames > 240, dtype=tf.int32)
+    codes = map(lambda x: tf.expand_dims(x, dim=1), [code_0, code_1, code_2, code_3, code_4])
+    length_code = tf.cast(tf.concat(codes, axis=1), dtype=tf.float32)
+    return length_code
