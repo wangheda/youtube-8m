@@ -89,6 +89,26 @@ class CrossEntropyLoss(BaseLoss):
       return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
 
 
+class LabelSmoothingCrossEntropyLoss(BaseLoss):
+  """Calculate the cross entropy loss between the predictions and labels.
+  """
+
+  def calculate_loss(self, predictions, labels, **unused_params):
+    with tf.name_scope("loss_xent"):
+      epsilon = 10e-6
+      smooth_labels = smoothing(labels)
+      cross_entropy_loss = smooth_labels * tf.log(predictions + epsilon) + (
+          1 - smooth_labels) * tf.log(1 - predictions + epsilon)
+      cross_entropy_loss = tf.negative(cross_entropy_loss)
+      return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
+
+  def smoothing(self, labels,  epsilon=0.1):
+      float_labels = tf.cast(labels, tf.float32)
+      K = float_labels.get_shape().as_list()[1]
+      prior = 1.0 / K
+      smooth_labels = float_labels * (1.0 - epsilon) + prior * epsilon
+      return smooth_labels
+
 class HingeLoss(BaseLoss):
   """Calculate the hinge loss between the predictions and labels.
 
