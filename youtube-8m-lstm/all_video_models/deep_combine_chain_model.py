@@ -20,6 +20,7 @@ class DeepCombineChainModel(models.BaseModel):
     use_length = FLAGS.deep_chain_use_length
 
     if use_length:
+      print "using length as feature"
       model_input = tf.concat([model_input, self.get_length_code(num_frames)], axis=1)
 
     next_input = model_input
@@ -34,6 +35,7 @@ class DeepCombineChainModel(models.BaseModel):
           scope=sub_scope+"relu-%d"%layer)
 
       if noise_level is not None:
+        print "adding noise to sub_activation, level = ", noise_level
         sub_activation = sub_activation + tf.random_normal(tf.shape(sub_activation), mean=0.0, stddev=noise_level)
 
       sub_relu = tf.nn.relu(sub_activation)
