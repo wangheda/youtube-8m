@@ -10,10 +10,15 @@ class DeepChainModel(models.BaseModel):
   """A softmax over a mixture of logistic models (with L2 regularization)."""
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
-                   l2_penalty=1e-8, sub_scope="", original_input=None, **unused_params):
+                   l2_penalty=1e-8, sub_scope="", original_input=None, 
+                   num_frames=None, **unused_params):
     num_supports = FLAGS.num_supports
     num_layers = FLAGS.deep_chain_layers
     relu_cells = FLAGS.deep_chain_relu_cells
+    use_length = FLAGS.deep_chain_use_length
+
+    if use_length:
+      model_input = tf.concat([model_input, self.get_length_code(num_frames)], axis=1)
 
     next_input = model_input
     support_predictions = []
@@ -62,3 +67,12 @@ class DeepChainModel(models.BaseModel):
     final_probabilities = tf.reshape(final_probabilities_by_class_and_batch,
                                      [-1, vocab_size])
     return final_probabilities
+
+  def get_length_code(self, num_frames):
+    code_0 = tf.cast(num_frames <= 60, dtype=tf.int32)
+    code_1 = tf.cast(num_frames > 60, dtype=tf.int32) * tf.cast(num_frames <= 120, dtype=tf.int32)
+    code_2 = tf.cast(num_frames > 120, dtype=tf.int32) * tf.cast(num_frames <= 180, dtype=tf.int32)
+    code_3 = tf.cast(num_frames > 180, dtype=tf.int32) * tf.cast(num_frames <= 240, dtype=tf.int32)
+    code_4 = tf.cast(num_frames > 240, dtype=tf.int32)
+    length_code = tf.cast(tf.concat([code_0, code_1, code_2, code_3, code_4], axis=1), dtype=tf.float32)
+    return length_code

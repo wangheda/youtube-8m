@@ -27,6 +27,10 @@ flags.DEFINE_integer(
     "deep_chain_relu_cells", 200,
     "The number of relu cells used for DeepChainModel")
 
+flags.DEFINE_bool(
+    "deep_chain_use_length", False,
+    "The number of relu cells used for DeepChainModel")
+
 flags.DEFINE_integer(
     "hidden_chain_layers", 4,
     "The number of layers used for HiddenChainModel")
