@@ -12,7 +12,9 @@ FLAGS = flags.FLAGS
 
 class LstmMemoryModel(models.BaseModel):
 
-  def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+  def create_model(self, model_input, vocab_size, num_frames, 
+                   dropout=False, keep_prob=None, noise_level=None,
+                   **unused_params):
     """Creates a model which uses a stack of LSTMs to represent the video.
 
     Args:
@@ -31,13 +33,24 @@ class LstmMemoryModel(models.BaseModel):
     number_of_layers = FLAGS.lstm_layers
 
     ## Batch normalize the input
-    stacked_lstm = tf.contrib.rnn.MultiRNNCell(
-            [
-                tf.contrib.rnn.BasicLSTMCell(
-                    lstm_size, forget_bias=1.0, state_is_tuple=True)
-                for _ in range(number_of_layers)
-                ],
-            state_is_tuple=True)
+    if dropout:
+      stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+              [
+                  tf.contrib.rnn.DropoutWrapper(
+                      tf.contrib.rnn.BasicLSTMCell(
+                          lstm_size, forget_bias=1.0, state_is_tuple=True),
+                      input_keep_prob=keep_prob)
+                  for _ in range(number_of_layers)
+              ],
+              state_is_tuple=True)
+    else:
+      stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+              [
+                  tf.contrib.rnn.BasicLSTMCell(
+                      lstm_size, forget_bias=1.0, state_is_tuple=True)
+                  for _ in range(number_of_layers)
+                  ],
+              state_is_tuple=True)
 
     loss = 0.0
     with tf.variable_scope("RNN"):
@@ -46,6 +59,9 @@ class LstmMemoryModel(models.BaseModel):
                                          swap_memory=FLAGS.rnn_swap_memory,
                                          dtype=tf.float32)
       final_state = tf.concat(map(lambda x: x.c, state), axis = 1)
+
+    if noise_level is not None:
+      final_state = final_state + tf.random_normal(tf.shape(finale_state), mean=0.0, stddev=noise_level)
 
     aggregated_model = getattr(video_level_models,
                                FLAGS.video_level_classifier_model)

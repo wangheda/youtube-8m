@@ -30,8 +30,6 @@ class DeepCombineChainModel(models.BaseModel):
 
       if noise_level is not None:
         sub_activation = sub_activation + tf.random_normal(tf.shape(sub_activation), mean=0.0, stddev=noise_level)
-      if dropout:
-        sub_activation = tf.nn.dropout(sub_activation, keep_prob=keep_prob)
 
       sub_relu = tf.nn.relu(sub_activation)
       relu_norm = tf.nn.l2_normalize(sub_relu, dim=1)
@@ -47,6 +45,9 @@ class DeepCombineChainModel(models.BaseModel):
                 **unused_params):
     num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
 
+    if dropout:
+      model_input = tf.nn.dropout(model_input, keep_prob=keep_prob)
+
     gate_activations = slim.fully_connected(
         model_input,
         vocab_size * (num_mixtures + 1),
@@ -60,9 +61,6 @@ class DeepCombineChainModel(models.BaseModel):
         activation_fn=None,
         weights_regularizer=slim.l2_regularizer(l2_penalty),
         scope="experts-"+sub_scope)
-
-    if dropout:
-      gate_activations = tf.nn.dropout(gate_activations, keep_prob=keep_prob)
 
     gating_distribution = tf.nn.softmax(tf.reshape(
         gate_activations,
