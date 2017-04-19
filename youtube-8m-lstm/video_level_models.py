@@ -30,6 +30,10 @@ flags.DEFINE_string(
     "deep_chain_relu_type", "relu",
     "The type of relu cells used for DeepChainModel (options are elu and relu)")
 
+flags.DEFINE_bool(
+    "deep_chain_use_length", False,
+    "The number of relu cells used for DeepChainModel")
+
 flags.DEFINE_integer(
     "hidden_chain_layers", 4,
     "The number of layers used for HiddenChainModel")
