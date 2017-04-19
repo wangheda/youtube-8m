@@ -29,7 +29,7 @@ class DeepCombineChainModel(models.BaseModel):
           scope=sub_scope+"relu-%d"%layer)
 
       if noise_level is not None:
-        sub_activation = sub_activation + tf.random_normal(sub_activation.shape, mean=0.0, stddev=noise_level)
+        sub_activation = sub_activation + tf.random_normal(tf.shape(sub_activation), mean=0.0, stddev=noise_level)
       if dropout:
         sub_activation = tf.nn.dropout(sub_activation, keep_prob=keep_prob)
 
