@@ -38,6 +38,18 @@ flags.DEFINE_string("vertical_file", "resources/vertical.tsv", "Location of labe
 flags.DEFINE_float("batch_agreement", 0.1,
                    "the batch_agreement parameter")
 
+flags.DEFINE_bool("label_smoothing", False,
+                   "whether do label smoothing")
+
+def smoothing(labels,  epsilon=0.1):
+  print "label smoothing for", labels
+  float_labels = tf.cast(labels, tf.float32)
+  num_labels = tf.reduce_sum(float_labels, axis=1, keep_dims=True)
+  K = float_labels.get_shape().as_list()[1]
+  prior = num_labels / K
+  smooth_labels = float_labels * (1.0 - epsilon) + prior * epsilon
+  return smooth_labels
+
 class BaseLoss(object):
   """Inherit from this class when implementing new losses."""
 
@@ -68,7 +80,10 @@ class WeightedCrossEntropyLoss(BaseLoss):
     false_negative_punishment = FLAGS.false_negative_punishment
     with tf.name_scope("loss_xent_recall"):
       epsilon = 10e-6
-      float_labels = tf.cast(labels, tf.float32)
+      if FLAGS.label_smoothing:
+        float_labels = smoothing(labels)
+      else:
+        float_labels = tf.cast(labels, tf.float32)
       cross_entropy_loss = false_negative_punishment * float_labels * tf.log(predictions + epsilon) \
           + false_positive_punishment * ( 1 - float_labels) * tf.log(1 - predictions + epsilon)
       cross_entropy_loss = tf.negative(cross_entropy_loss)
@@ -82,12 +97,14 @@ class CrossEntropyLoss(BaseLoss):
   def calculate_loss(self, predictions, labels, **unused_params):
     with tf.name_scope("loss_xent"):
       epsilon = 10e-6
-      float_labels = tf.cast(labels, tf.float32)
+      if FLAGS.label_smoothing:
+        float_labels = smoothing(labels)
+      else:
+        float_labels = tf.cast(labels, tf.float32)
       cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
           1 - float_labels) * tf.log(1 - predictions + epsilon)
       cross_entropy_loss = tf.negative(cross_entropy_loss)
       return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
-
 
 class HingeLoss(BaseLoss):
   """Calculate the hinge loss between the predictions and labels.
