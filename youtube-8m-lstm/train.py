@@ -249,7 +249,7 @@ def build_graph(reader,
 
   # data augmentation, will not persist in inference
   data_augmenter = augmenter_class()
-  model_input, labels_batch, num_frames = data_augmenter.augment(model_input_raw, num_frames=num_frames, labels_batch=labels_batch)
+  model_input_raw, labels_batch, num_frames = data_augmenter.augment(model_input_raw, num_frames=num_frames, labels_batch=labels_batch)
 
   tf.summary.histogram("model/input_raw", model_input_raw)
 
