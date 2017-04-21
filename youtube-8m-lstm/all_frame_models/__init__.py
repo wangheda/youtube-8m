@@ -36,3 +36,5 @@ from lstm_memory_input_chain_model import *
 from lstm_memory_parallel_chain_model import *
 
 from wide_and_deep_model import *
+
+from multires_lstm_memory_deep_combine_chain_model import *

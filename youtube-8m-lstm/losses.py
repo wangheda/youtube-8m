@@ -40,9 +40,12 @@ flags.DEFINE_float("batch_agreement", 0.1,
 
 flags.DEFINE_bool("label_smoothing", False,
                    "whether do label smoothing")
+flags.DEFINE_float("label_smoothing_epsilon", 0.1,
+                   "whether do label smoothing")
 
-def smoothing(labels,  epsilon=0.1):
+def smoothing(labels):
   print "label smoothing for", labels
+  epsilon = FLAGS.label_smoothing_epsilon
   float_labels = tf.cast(labels, tf.float32)
   num_labels = tf.reduce_sum(float_labels, axis=1, keep_dims=True)
   K = float_labels.get_shape().as_list()[1]
