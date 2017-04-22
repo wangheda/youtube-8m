@@ -249,12 +249,14 @@ def build_graph(reader,
 
   # data augmentation, will not persist in inference
   data_augmenter = augmenter_class()
-  model_input, labels_batch, num_frames = data_augmenter.augment(model_input_raw, num_frames=num_frames, labels_batch=labels_batch)
+  model_input_raw, labels_batch, num_frames = data_augmenter.augment(model_input_raw, num_frames=num_frames, labels_batch=labels_batch)
 
   tf.summary.histogram("model/input_raw", model_input_raw)
 
   feature_transformer = transformer_class()
   model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
+
+  tf.summary.histogram("model/input", model_input)
 
   with tf.name_scope("model"):
     if FLAGS.noise_level > 0:
@@ -289,9 +291,12 @@ def build_graph(reader,
     else:
       if FLAGS.multitask:
         support_predictions = result["support_predictions"]
+        tf.summary.histogram("model/support_predictions", support_predictions)
         label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch)
       else:
         label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+
+    tf.summary.histogram("model/predictions", predictions)
     tf.summary.scalar("label_loss", label_loss)
 
     if "regularization_loss" in result.keys():

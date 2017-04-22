@@ -10,7 +10,7 @@ import tensorflow.contrib.slim as slim
 from tensorflow import flags
 FLAGS = flags.FLAGS
 
-class LstmMemoryModel(models.BaseModel):
+class LayerNormLstmMemoryModel(models.BaseModel):
 
   def create_model(self, model_input, vocab_size, num_frames, 
                    dropout=False, keep_prob=None, noise_level=None,
@@ -36,18 +36,16 @@ class LstmMemoryModel(models.BaseModel):
     if dropout:
       stacked_lstm = tf.contrib.rnn.MultiRNNCell(
               [
-                  tf.contrib.rnn.DropoutWrapper(
-                      tf.contrib.rnn.BasicLSTMCell(
-                          lstm_size, forget_bias=1.0, state_is_tuple=True),
-                      input_keep_prob=keep_prob)
+                  tf.contrib.rnn.LayerNormBasicLSTMCell(
+                      lstm_size, dropout_keep_prob=keep_prob)
                   for _ in range(number_of_layers)
               ],
               state_is_tuple=True)
     else:
       stacked_lstm = tf.contrib.rnn.MultiRNNCell(
               [
-                  tf.contrib.rnn.BasicLSTMCell(
-                      lstm_size, forget_bias=1.0, state_is_tuple=True)
+                  tf.contrib.rnn.LayerNormBasicLSTMCell(
+                      lstm_size)
                   for _ in range(number_of_layers)
                   ],
               state_is_tuple=True)
@@ -69,6 +67,5 @@ class LstmMemoryModel(models.BaseModel):
         model_input=final_state,
         original_input=model_input,
         vocab_size=vocab_size,
-        num_frames=num_frames,
         **unused_params)
 
