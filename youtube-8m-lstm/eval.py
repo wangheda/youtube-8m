@@ -77,6 +77,8 @@ if __name__ == "__main__":
       "Whether to consider dropout")
   flags.DEFINE_float("keep_prob", 1.0, 
       "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
+  flags.DEFINE_float("noise_level", 0.0, 
+      "standard deviation of noise (added to hidden nodes)")
 
 
 def find_class_by_name(name, modules):
@@ -159,7 +161,22 @@ def build_graph(reader,
   model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
 
   with tf.name_scope("model"):
-    result = model.create_model(model_input,
+    if FLAGS.noise_level > 0:
+      noise_level_tensor = tf.placeholder_with_default(0.0, shape=[], name="noise_level")
+    else:
+      noise_level_tensor = None
+
+    if FLAGS.dropout:
+      keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
+      result = model.create_model(model_input,
+                                num_frames=num_frames,
+                                vocab_size=reader.num_classes,
+                                labels=labels_batch,
+                                dropout=FLAGS.dropout,
+                                keep_prob=keep_prob_tensor,
+                                is_training=False)
+    else:
+      result = model.create_model(model_input,
                                 num_frames=num_frames,
                                 vocab_size=reader.num_classes,
                                 labels=labels_batch,
@@ -183,6 +200,10 @@ def build_graph(reader,
   tf.add_to_collection("num_frames", num_frames)
   tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
   tf.add_to_collection("summary_op", tf.summary.merge_all())
+  if FLAGS.dropout:
+    tf.add_to_collection("keep_prob", keep_prob_tensor)
+  if FLAGS.noise_level > 0:
+    tf.add_to_collection("noise_level", noise_level_tensor)
 
 
 def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
@@ -232,6 +253,8 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
     # Start the queue runners.
     if FLAGS.dropout:
       keep_prob_tensor = tf.get_collection("keep_prob")[0]
+    if FLAGS.noise_level > 0:
+      noise_level_tensor = tf.get_collection("noise_level")[0]
     fetches = [video_id_batch, prediction_batch, label_batch, loss, summary_op]
     coord = tf.train.Coordinator()
     try:
@@ -248,12 +271,16 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
       examples_processed = 0
       while not coord.should_stop():
         batch_start_time = time.time()
+
+        custom_feed = {}
         if FLAGS.dropout:
-          _, predictions_val, labels_val, loss_val, summary_val = sess.run(
-              fetches, feed_dict={keep_prob_tensor: FLAGS.keep_prob})
-        else:
-          _, predictions_val, labels_val, loss_val, summary_val = sess.run(
-              fetches)
+          custom_feed[keep_prob_tensor] = FLAGS.keep_prob
+        if FLAGS.noise_level > 0:
+          custom_feed[noise_level_tensor] = FLAGS.noise_level
+
+        _, predictions_val, labels_val, loss_val, summary_val = sess.run(
+            fetches, feed_dict=custom_feed)
+
         seconds_per_batch = time.time() - batch_start_time
         example_per_second = labels_val.shape[0] / seconds_per_batch
         examples_processed += labels_val.shape[0]
