@@ -324,11 +324,13 @@ def build_graph(reader,
 
     # Incorporate the L2 weight penalties etc.
     final_loss = regularization_penalty * reg_loss + label_loss
-    train_op = slim.learning.create_train_op(
-        final_loss,
-        optimizer,
-        global_step=global_step,
-        clip_gradient_norm=clip_gradient_norm)
+
+    gradients = optimizer.compute_gradients(final_loss,
+        colocate_gradients_with_ops=False)
+    if clip_gradient_norm > 0:
+      with tf.name_scope('clip_grads'):
+        gradients = utils.clip_gradient_norms(gradients , clip_gradient_norm)
+    train_op = optimizer.apply_gradients(gradients, global_step=global_step)
 
     tf.add_to_collection("global_step", global_step)
     tf.add_to_collection("loss", label_loss)
