@@ -13,6 +13,7 @@ from lstm_divided_model import *
 from lstm_memory_model import *
 from layernorm_lstm_memory_model import *
 from lstm_parallel_memory_model import *
+from lstm_parallel_finaloutput_model import *
 from cnn_deep_combine_chain_model import *
 from deep_cnn_deep_combine_chain_model import *
 from cnn_lstm_memory_model import *
