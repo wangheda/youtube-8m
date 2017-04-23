@@ -147,12 +147,11 @@ class MultiresLstmMemoryDeepCombineChainModel(models.BaseModel):
     return length_code
 
   def resolution(self, model_input_raw, num_frames, resolution):
+    frame_dim = len(model_input_raw.get_shape()) - 2
+    feature_dim = len(model_input_raw.get_shape()) - 1
+    max_frames = model_input_raw.get_shape().as_list()[frame_dim]
+    num_features = model_input_raw.get_shape().as_list()[feature_dim]
     if resolution > 1:
-      frame_dim = len(model_input_raw.get_shape()) - 2
-      feature_dim = len(model_input_raw.get_shape()) - 1
-      max_frames = model_input_raw.get_shape().as_list()[frame_dim]
-      num_features = model_input_raw.get_shape().as_list()[feature_dim]
-  
       new_max_frames = max_frames / resolution
       cut_frames = new_max_frames * resolution
       model_input_raw = model_input_raw[:, :cut_frames, :]
@@ -162,6 +161,6 @@ class MultiresLstmMemoryDeepCombineChainModel(models.BaseModel):
       model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
       num_frames = num_frames / resolution
     else:
-      model_input = model_input_raw
+      model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
     return model_input, num_frames
 
