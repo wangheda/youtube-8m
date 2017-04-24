@@ -40,3 +40,4 @@ from wide_and_deep_model import *
 
 from multires_lstm_memory_deep_combine_chain_model import *
 from framehop_lstm_memory_deep_combine_chain_model import *
+from framehop_lstm_memory_model import *
