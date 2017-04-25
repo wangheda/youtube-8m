@@ -34,11 +34,12 @@ class DeepCombineChainModel(models.BaseModel):
           weights_regularizer=slim.l2_regularizer(l2_penalty),
           scope=sub_scope+"relu-%d"%layer)
 
-      if noise_level is not None:
-        print "adding noise to sub_activation, level = ", noise_level
-        sub_activation = sub_activation + tf.random_normal(tf.shape(sub_activation), mean=0.0, stddev=noise_level)
-
       sub_relu = tf.nn.relu(sub_activation)
+
+      if noise_level is not None:
+        print "adding noise to sub_relu, level = ", noise_level
+        sub_relu = sub_relu + tf.random_normal(tf.shape(sub_relu), mean=0.0, stddev=noise_level)
+
       relu_norm = tf.nn.l2_normalize(sub_relu, dim=1)
       next_input = tf.concat([next_input, relu_norm], axis=1)
       support_predictions.append(sub_prediction)
