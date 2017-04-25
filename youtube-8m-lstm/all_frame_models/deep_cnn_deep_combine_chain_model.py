@@ -63,6 +63,7 @@ class DeepCnnDeepCombineChainModel(models.BaseModel):
     return cnn_outputs
 
   def create_model(self, model_input, vocab_size, num_frames, num_mixtures=None,
+                   dropout=False, keep_prob=None, noise_level=None,
                    l2_penalty=1e-8, sub_scope="", original_input=None, **unused_params):
     num_supports = FLAGS.num_supports
     num_layers = FLAGS.deep_chain_layers
@@ -94,7 +95,8 @@ class DeepCnnDeepCombineChainModel(models.BaseModel):
     next_input = normalized_cnn_output
 
     for layer in xrange(num_layers):
-      sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer)
+      sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer, 
+                                      dropout=dropout, keep_prob=keep_prob, noise_level=noise_level)
       support_predictions.append(sub_prediction)
 
       sub_relu = slim.fully_connected(
@@ -114,13 +116,19 @@ class DeepCnnDeepCombineChainModel(models.BaseModel):
       normalized_cnn_output = tf.nn.l2_normalize(max_cnn_output, dim=1)
       next_input = tf.concat([mean_input, normalized_cnn_output] + relu_layers, axis=1)
 
-    main_predictions = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"-main")
+    main_predictions = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"-main",
+                                      dropout=dropout, keep_prob=keep_prob, noise_level=noise_level)
     support_predictions = tf.concat(support_predictions, axis=1)
     return {"predictions": main_predictions, "support_predictions": support_predictions}
 
   def sub_model(self, model_input, vocab_size, num_mixtures=None, 
+                dropout=False, keep_prob=None, noise_level=None,
                 l2_penalty=1e-8, sub_scope="", **unused_params):
     num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+
+    if dropout:
+      print "adding dropout to", model_input
+      model_input = tf.nn.dropout(model_input, keep_prob=keep_prob)
 
     gate_activations = slim.fully_connected(
         model_input,
