@@ -107,7 +107,7 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
     video_id_batch, video_batch, video_label_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
 
     if model_checkpoint_path:
-      meta_graph_location = latest_checkpoint + ".meta"
+      meta_graph_location = model_checkpoint_path + ".meta"
       logging.info("loading meta-graph: " + meta_graph_location)
     else:
       raise Exception("unable to find a checkpoint at location: %s" % model_checkpoint_path)
@@ -118,7 +118,6 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
     input_tensor = tf.get_collection("input_batch_raw")[0]
     num_frames_tensor = tf.get_collection("num_frames")[0]
     predictions_tensor = tf.get_collection("predictions")[0]
-    bottleneck_tensor = tf.get_collection("bottleneck")[0]
 
     # Workaround for num_epochs issue.
     def set_up_init_ops(variables):

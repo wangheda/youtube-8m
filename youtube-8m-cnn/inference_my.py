@@ -102,13 +102,22 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
                             enqueue_many=True))
     return video_id_batch, video_batch, unused_labels, num_frames_batch
 
-def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
+def inference(reader, model_checkpoint_path, data_pattern, out_file_location, batch_size, top_k):
   with tf.Session() as sess:
     video_id_batch, video_batch, video_label_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
+
+    if model_checkpoint_path:
+      meta_graph_location = model_checkpoint_path + ".meta"
+      logging.info("loading meta-graph: " + meta_graph_location)
+    else:
+      raise Exception("unable to find a checkpoint at location: %s" % model_checkpoint_path)
+    saver = tf.train.import_meta_graph(meta_graph_location, clear_devices=True)
+    logging.info("restoring variables from " + model_checkpoint_path)
+    saver.restore(sess, model_checkpoint_path)
+
     input_tensor = tf.get_collection("input_batch_raw")[0]
     num_frames_tensor = tf.get_collection("num_frames")[0]
     predictions_tensor = tf.get_collection("predictions")[0]
-    bottleneck_tensor = tf.get_collection("bottleneck")[0]
 
     # Workaround for num_epochs issue.
     def set_up_init_ops(variables):
@@ -223,7 +232,7 @@ def main(unused_argv):
     raise ValueError("'input_data_pattern' was not specified. "
       "Unable to continue with inference.")
 
-  inference(reader, FLAGS.train_dir, FLAGS.input_data_pattern,
+  inference(reader, FLAGS.model_checkpoint_path, FLAGS.input_data_pattern,
     FLAGS.output_dir, FLAGS.batch_size, FLAGS.top_k)
 
 
