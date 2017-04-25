@@ -224,8 +224,11 @@ def write_to_record(id_batch, label_batch, input_batch, predictions, filenum, nu
         label = np.nonzero(label_batch[i,:])[0]
         features_1 = input_batch[i,:]
         features_2 = predictions[i,:]
+        """
         example = get_output_feature(video_id, label, [features_1,features_2],
-                                     ['rgb_audio','predictions'])
+                                     ['rgb_audio','predictions'])"""
+        example = get_output_feature(video_id, label, [features_2],
+                                     ['predictions'])
         serialized = example.SerializeToString()
         writer.write(serialized)
     writer.close()
