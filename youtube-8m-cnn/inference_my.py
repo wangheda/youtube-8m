@@ -36,8 +36,12 @@ FLAGS = flags.FLAGS
 if __name__ == '__main__':
   flags.DEFINE_string("train_dir", "/tmp/yt8m_model/",
                       "The directory to load the model files from.")
-  flags.DEFINE_string("output_file", "",
+  flags.DEFINE_string("output_dir", "",
                       "The file to save the predictions to.")
+  flags.DEFINE_string("set", "",
+                      "The second-level file to save the predictions to.")
+  flags.DEFINE_string("model", "",
+                      "The third-level file to save the predictions to.")
   flags.DEFINE_string(
       "input_data_pattern", "",
       "File glob defining the evaluation dataset in tensorflow.SequenceExample "
@@ -99,6 +103,12 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
   """
   with tf.name_scope("input"):
     files = gfile.Glob(data_pattern)
+    """
+    if FLAGS.set=="ensemble_validate":
+        files = [file for file in files if 'validatea' in file]
+    elif FLAGS.set=="ensemble_train":
+        files = [file for file in files if 'validatea' not in file]"""
+    files.sort()
     if not files:
       raise IOError("Unable to find input files. data_pattern='" +
                     data_pattern + "'")
@@ -111,12 +121,12 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
     video_id_batch, video_batch, unused_labels, num_frames_batch = (
         tf.train.batch_join(examples_and_labels,
                             batch_size=batch_size,
-                            allow_smaller_final_batch = True,
+                            allow_smaller_final_batch=True,
                             enqueue_many=True))
     return video_id_batch, video_batch, unused_labels, num_frames_batch
 
 def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
-  with tf.Session() as sess, gfile.Open(out_file_location, "w+") as out_file:
+  with tf.Session() as sess:
     video_id_batch, video_batch, video_label_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
     latest_checkpoint = tf.train.latest_checkpoint(train_dir)
     if latest_checkpoint is None:
@@ -150,60 +160,75 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     num_examples_processed = 0
     start_time = time.time()
     #out_file.write("VideoId,LabelConfidencePairs\n")
+    video_id = []
+    video_label = []
+    video_inputs = []
+    video_features = []
+    filenum = 0
+    #directory = FLAGS.output_dir+'/'+FLAGS.set+'/'+FLAGS.model
+    directory = FLAGS.output_dir
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    else:
+        filelist = [ f for f in os.listdir(directory) ]
+        for f in filelist:
+            os.remove(directory+'/'+f)
 
     try:
-      video_id = []
-      video_label = []
-      video_features = []
-      filenum = 0
       while not coord.should_stop():
           video_id_batch_val, video_batch_val, video_label_batch_val, num_frames_batch_val = sess.run([video_id_batch, video_batch, video_label_batch, num_frames_batch])
-          bottlenecks = sess.run(predictions_tensor, feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
+          predictions = sess.run(predictions_tensor, feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
           now = time.time()
           num_examples_processed += len(video_batch_val)
 
           video_id.append(video_id_batch_val)
           video_label.append(video_label_batch_val)
-          video_features.append(bottlenecks)
+          video_features.append(predictions)
+          video_inputs.append(video_batch_val)
 
           if num_examples_processed>=FLAGS.file_size:
+            assert num_examples_processed==FLAGS.file_size, "num_examples_processed should be equal to file_size"
             video_id = np.concatenate(video_id,axis=0)
             video_label = np.concatenate(video_label,axis=0)
+            video_inputs = np.concatenate(video_inputs,axis=0)
             video_features = np.concatenate(video_features,axis=0)
-            write_to_record(video_id, video_label, video_features, filenum, num_examples_processed)
+            write_to_record(video_id, video_label, video_inputs, video_features, filenum, num_examples_processed)
             filenum += 1
             video_id = []
             video_label = []
+            video_inputs = []
             video_features = []
             num_examples_processed = 0
-          #num_classes = predictions_val.shape[1]
+
           logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
-          """
-          for line in format_lines(video_id_batch_val, predictions_val, top_k):
-            out_file.write(line)
-          out_file.flush()"""
-      if num_examples_processed<FLAGS.file_size:
-          video_id = np.concatenate(video_id,axis=0)
-          video_label = np.concatenate(video_label,axis=0)
-          video_features = np.concatenate(video_features,axis=0)
-          write_to_record(video_id, video_label, video_features, filenum,num_examples_processed)
 
 
     except tf.errors.OutOfRangeError:
         logging.info('Done with inference. The output file was written to ' + out_file_location)
     finally:
         coord.request_stop()
+        if num_examples_processed<FLAGS.file_size:
+            video_id = np.concatenate(video_id,axis=0)
+            video_label = np.concatenate(video_label,axis=0)
+            video_inputs = np.concatenate(video_inputs,axis=0)
+            video_features = np.concatenate(video_features,axis=0)
+            write_to_record(video_id, video_label, video_inputs, video_features, filenum,num_examples_processed)
 
     coord.join(threads)
     sess.close()
-def write_to_record(id_batch, label_batch, bottlenecks, filenum, num_examples_processed):
-    writer = tf.python_io.TFRecordWriter(FLAGS.output_file+str(filenum)+'.tfrecord')
+def write_to_record(id_batch, label_batch, input_batch, predictions, filenum, num_examples_processed):
+    #writer = tf.python_io.TFRecordWriter(FLAGS.output_dir+'/'+FLAGS.set+'/'+FLAGS.model+'/'+'predictions-%03d.tfrecord' % filenum)
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir+'/'+'predictions-%03d.tfrecord' % filenum)
     for i in range(num_examples_processed):
         video_id = id_batch[i]
         label = np.nonzero(label_batch[i,:])[0]
-        features = bottlenecks[i,:]
-        example = get_output_feature(video_id, label, [features],
-                                     ['bottle_necks'])
+        features_1 = input_batch[i,:]
+        features_2 = predictions[i,:]
+        """
+        example = get_output_feature(video_id, label, [features_1,features_2],
+                                     ['rgb_audio','predictions'])"""
+        example = get_output_feature(video_id, label, [features_2],
+                                     ['predictions'])
         serialized = example.SerializeToString()
         writer.write(serialized)
     writer.close()
@@ -230,8 +255,8 @@ def main(unused_argv):
     reader = readers.YT8MAggregatedFeatureReader(feature_names=feature_names,
                                                  feature_sizes=feature_sizes)
 
-  if FLAGS.output_file is "":
-    raise ValueError("'output_file' was not specified. "
+  if FLAGS.output_dir is "":
+    raise ValueError("'output_dir' was not specified. "
       "Unable to continue with inference.")
 
   if FLAGS.input_data_pattern is "":
@@ -239,7 +264,7 @@ def main(unused_argv):
       "Unable to continue with inference.")
 
   inference(reader, FLAGS.train_dir, FLAGS.input_data_pattern,
-    FLAGS.output_file, FLAGS.batch_size, FLAGS.top_k)
+    FLAGS.output_dir, FLAGS.batch_size, FLAGS.top_k)
 
 
 if __name__ == "__main__":
