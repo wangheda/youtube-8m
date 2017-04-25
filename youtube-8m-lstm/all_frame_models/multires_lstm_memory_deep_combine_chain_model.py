@@ -1,13 +1,49 @@
-import math
+import sys
 import models
+import model_utils
+import math
+import numpy as np
+import video_level_models
 import tensorflow as tf
 import utils
-from tensorflow import flags
 import tensorflow.contrib.slim as slim
+from tensorflow import flags
 FLAGS = flags.FLAGS
 
-class DeepCombineChainModel(models.BaseModel):
-  """A softmax over a mixture of logistic models (with L2 regularization)."""
+class MultiresLstmMemoryDeepCombineChainModel(models.BaseModel):
+  """Classifier chain model of lstm memory"""
+
+  def lstm(self, model_input, vocab_size, num_frames, sub_scope="", **unused_params):
+    number_of_layers = FLAGS.lstm_layers
+    lstm_sizes = map(int, FLAGS.lstm_cells.split(","))
+    feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
+        FLAGS.feature_names, FLAGS.feature_sizes)
+    sub_inputs = [tf.nn.l2_normalize(x, dim=2) for x in tf.split(model_input, feature_sizes, axis = 2)]
+
+    assert len(lstm_sizes) == len(feature_sizes), \
+      "length of lstm_sizes (={}) != length of feature_sizes (={})".format( \
+      len(lstm_sizes), len(feature_sizes))
+
+    states = []
+    for i in xrange(len(feature_sizes)):
+      with tf.variable_scope(sub_scope+"RNN%d" % i):
+        sub_input = sub_inputs[i]
+        lstm_size = lstm_sizes[i]
+        ## Batch normalize the input
+        stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+                [
+                    tf.contrib.rnn.BasicLSTMCell(
+                        lstm_size, forget_bias=1.0, state_is_tuple=True)
+                    for _ in range(number_of_layers)
+                    ],
+                state_is_tuple=True)
+        output, state = tf.nn.dynamic_rnn(stacked_lstm, sub_input,
+                                         sequence_length=num_frames,
+                                         swap_memory=FLAGS.rnn_swap_memory,
+                                         dtype=tf.float32)
+        states.extend(map(lambda x: x.c, state))
+    final_state = tf.concat(states, axis = 1)
+    return final_state
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
                    l2_penalty=1e-8, sub_scope="", original_input=None, 
@@ -20,14 +56,22 @@ class DeepCombineChainModel(models.BaseModel):
     relu_type = FLAGS.deep_chain_relu_type
     use_length = FLAGS.deep_chain_use_length
 
+    num_resolutions = [int(2**(num_layers-i)) for i in xrange(num_layers+1)]
+
+    additional_features = []
     if use_length:
       print "using length as feature"
-      model_input = tf.concat([model_input, self.get_length_code(num_frames)], axis=1)
+      additional_features.append(self.get_length_code(num_frames))
 
-    next_input = model_input
+    lstm_input, lstm_frames = self.resolution(model_input, num_frames, num_resolutions[0])
+    lstm_output = self.lstm(lstm_input, vocab_size, num_frames=lstm_frames, sub_scope="lstm%d"%0)
+    next_input = tf.concat([lstm_output] + additional_features, axis=1)
+
     support_predictions = []
     for layer in xrange(num_layers):
       sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer, dropout=dropout, keep_prob=keep_prob, noise_level=noise_level)
+      support_predictions.append(sub_prediction)
+
       sub_activation = slim.fully_connected(
           sub_prediction,
           relu_cells,
@@ -45,8 +89,12 @@ class DeepCombineChainModel(models.BaseModel):
         sub_relu = sub_relu + tf.random_normal(tf.shape(sub_relu), mean=0.0, stddev=noise_level)
 
       relu_norm = tf.nn.l2_normalize(sub_relu, dim=1)
-      next_input = tf.concat([next_input, relu_norm], axis=1)
-      support_predictions.append(sub_prediction)
+      additional_features.append(relu_norm)
+
+      lstm_input, lstm_frames = self.resolution(model_input, num_frames, num_resolutions[layer+1])
+      lstm_output = self.lstm(lstm_input, vocab_size, num_frames=lstm_frames, sub_scope="lstm%d"%(layer+1))
+      next_input = tf.concat([lstm_output] + additional_features, axis=1)
+
     main_predictions = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"-main")
     support_predictions = tf.concat(support_predictions, axis=1)
     return {"predictions": main_predictions, "support_predictions": support_predictions}
@@ -58,6 +106,7 @@ class DeepCombineChainModel(models.BaseModel):
     num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
 
     if dropout:
+      print "adding dropout to moe, keep_prob = ", keep_prob
       model_input = tf.nn.dropout(model_input, keep_prob=keep_prob)
 
     gate_activations = slim.fully_connected(
@@ -96,3 +145,22 @@ class DeepCombineChainModel(models.BaseModel):
     codes = map(lambda x: tf.expand_dims(x, dim=1), [code_0, code_1, code_2, code_3, code_4])
     length_code = tf.cast(tf.concat(codes, axis=1), dtype=tf.float32)
     return length_code
+
+  def resolution(self, model_input_raw, num_frames, resolution):
+    frame_dim = len(model_input_raw.get_shape()) - 2
+    feature_dim = len(model_input_raw.get_shape()) - 1
+    max_frames = model_input_raw.get_shape().as_list()[frame_dim]
+    num_features = model_input_raw.get_shape().as_list()[feature_dim]
+    if resolution > 1:
+      new_max_frames = max_frames / resolution
+      cut_frames = new_max_frames * resolution
+      model_input_raw = model_input_raw[:, :cut_frames, :]
+      model_input_raw = tf.reshape(model_input_raw, shape=[-1,new_max_frames,resolution,num_features])
+      model_input_raw = tf.reduce_mean(model_input_raw, axis=2)
+
+      model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+      num_frames = num_frames / resolution
+    else:
+      model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+    return model_input, num_frames
+

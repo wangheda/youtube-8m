@@ -177,6 +177,7 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
 
           logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
 
+
     except tf.errors.OutOfRangeError:
         logging.info('Done with inference. The output file was written to ' + out_file_location)
     finally:
@@ -192,7 +193,7 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
     sess.close()
 
 def write_to_record(id_batch, label_batch, input_batch, predictions, filenum, num_examples_processed):
-    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir+'/'+'predictions-%03d.tfrecord' % filenum)
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%03d.tfrecord' % filenum)
     for i in range(num_examples_processed):
         video_id = id_batch[i]
         label = np.nonzero(label_batch[i,:])[0]
@@ -233,7 +234,7 @@ def main(unused_argv):
       "Unable to continue with inference.")
 
   inference(reader, FLAGS.model_checkpoint_path, FLAGS.input_data_pattern,
-    FLAGS.output_dir, FLAGS.batch_size, FLAGS.top_k)
+      FLAGS.output_dir, FLAGS.batch_size, FLAGS.top_k)
 
 
 if __name__ == "__main__":

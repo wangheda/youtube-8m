@@ -13,7 +13,7 @@ for filename in os.listdir("."):
 check_list.sort()
 for checkpoint in check_list:
         if check.has_key(checkpoint / every):
-		pass
+                pass
         else:
                 check[checkpoint / every] = True
                 print checkpoint
