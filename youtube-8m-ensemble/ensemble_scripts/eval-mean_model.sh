@@ -3,7 +3,7 @@ train_data_patterns=""
 for d in $(ls $train_path | sort); do
   train_data_patterns="${train_path}/${d}/*.tfrecord${train_data_patterns:+,$train_data_patterns}"
 done
-echo $train_data_patterns
+echo "$train_data_patterns"
 
 CUDA_VISIBLE_DEVICES=0 python eval.py \
       --model_checkpoint_path="../model/mean_model/model.ckpt-0" \
