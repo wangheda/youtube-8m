@@ -1,8 +1,8 @@
 
 for part in ensemble_train ensemble_validate test; do 
-    CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
-        --output_dir="/Youtube-8M/model_predictions/${part}/lstmmemory_cell2048_layer2_moe4" \
-        --model_checkpoint_path="../model/lstmmemory2048_moe4_batch128/model.ckpt-109434" \
+    CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble.py \
+        --output_dir="/Youtube-8M/model_predictions/${part}/lstmparallelmemory1024_moe8" \
+        --model_checkpoint_path="../model/lstmparallelmemory1024_moe8/model.ckpt-111155" \
         --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
         --frame_features=True \
         --feature_names="rgb,audio" \
