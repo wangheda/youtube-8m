@@ -1,0 +1,412 @@
+cnn_deep_combine_chain
+GAP = 0.816665221681
+------------------------------------------------
+deep_cnn_deep_combine_chain
+GAP = 0.814806325097
+------------------------------------------------
+lstm_attention8_max
+GAP = 0.815108872388
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length
+GAP = 0.814129286481
+------------------------------------------------
+lstmmemory_cell1024_layer2_moe8
+GAP = 0.812080163135
+------------------------------------------------
+lstmmemory_cell2048_layer2_moe4
+GAP = 0.813540507351
+------------------------------------------------
+lstmparallelmemory1024_moe8
+GAP = 0.814833331691
+------------------------------------------------
+video_very_deep_combine_chain
+GAP = 0.810174420122
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain
+GAP = 0.82557031245
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max
+GAP = 0.829659120727
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length
+GAP = 0.828572770795
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8
+GAP = 0.827447547713
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4
+GAP = 0.828015668957
+------------------------------------------------
+cnn_deep_combine_chain,lstmparallelmemory1024_moe8
+GAP = 0.829346968501
+------------------------------------------------
+cnn_deep_combine_chain,video_very_deep_combine_chain
+GAP = 0.825294576305
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max
+GAP = 0.827991520743
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length
+GAP = 0.827050978978
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8
+GAP = 0.825639821236
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4
+GAP = 0.826148618017
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmparallelmemory1024_moe8
+GAP = 0.827756382817
+------------------------------------------------
+deep_cnn_deep_combine_chain,video_very_deep_combine_chain
+GAP = 0.823699502378
+------------------------------------------------
+lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length
+GAP = 0.827966037686
+------------------------------------------------
+lstm_attention8_max,lstmmemory_cell1024_layer2_moe8
+GAP = 0.82594497815
+------------------------------------------------
+lstm_attention8_max,lstmmemory_cell2048_layer2_moe4
+GAP = 0.826350996945
+------------------------------------------------
+lstm_attention8_max,lstmparallelmemory1024_moe8
+GAP = 0.828111399229
+------------------------------------------------
+lstm_attention8_max,video_very_deep_combine_chain
+GAP = 0.827831471962
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8
+GAP = 0.824264654816
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4
+GAP = 0.824553122942
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8
+GAP = 0.826524738997
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,video_very_deep_combine_chain
+GAP = 0.826541745861
+------------------------------------------------
+lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.822700768554
+------------------------------------------------
+lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.824428614492
+------------------------------------------------
+lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.825377747168
+------------------------------------------------
+lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.825320116688
+------------------------------------------------
+lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.825870841013
+------------------------------------------------
+lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.827311197228
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max
+GAP = 0.832191332449
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length
+GAP = 0.831426452795
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8
+GAP = 0.830459884161
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4
+GAP = 0.830804693389
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmparallelmemory1024_moe8
+GAP = 0.832026266634
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,video_very_deep_combine_chain
+GAP = 0.828845214499
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length
+GAP = 0.833621054469
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8
+GAP = 0.832483129822
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell2048_layer2_moe4
+GAP = 0.832721553048
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmparallelmemory1024_moe8
+GAP = 0.834000141252
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,video_very_deep_combine_chain
+GAP = 0.832594974463
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8
+GAP = 0.83140605405
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4
+GAP = 0.831612457968
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8
+GAP = 0.832955557705
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,video_very_deep_combine_chain
+GAP = 0.831666234693
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.830441764733
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.831766254279
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.830901832056
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.832169199739
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.831109764339
+------------------------------------------------
+cnn_deep_combine_chain,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.83223587122
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length
+GAP = 0.832349778772
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8
+GAP = 0.831052849226
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell2048_layer2_moe4
+GAP = 0.831305454699
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmparallelmemory1024_moe8
+GAP = 0.832756750266
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,video_very_deep_combine_chain
+GAP = 0.831369689002
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8
+GAP = 0.829913304808
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4
+GAP = 0.830247896269
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8
+GAP = 0.831736842166
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,video_very_deep_combine_chain
+GAP = 0.830453715972
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.828878078355
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.830298620071
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.829553175272
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.830743752891
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.829768283623
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.831023711068
+------------------------------------------------
+lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8
+GAP = 0.830592277718
+------------------------------------------------
+lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4
+GAP = 0.830746937407
+------------------------------------------------
+lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8
+GAP = 0.832236858925
+------------------------------------------------
+lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,video_very_deep_combine_chain
+GAP = 0.832650348923
+------------------------------------------------
+lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.829139497202
+------------------------------------------------
+lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.830648119982
+------------------------------------------------
+lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.831435923278
+------------------------------------------------
+lstm_attention8_max,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.831018565226
+------------------------------------------------
+lstm_attention8_max,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.831602818518
+------------------------------------------------
+lstm_attention8_max,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.833058032219
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.827740923928
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.829327455006
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.830225595389
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.829626608004
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.830460642345
+------------------------------------------------
+lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.831778438641
+------------------------------------------------
+lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.828104386062
+------------------------------------------------
+lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.829167967486
+------------------------------------------------
+lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.830592592778
+------------------------------------------------
+lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.830995957639
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length
+GAP = 0.834859637855
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8
+GAP = 0.833895260202
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell2048_layer2_moe4
+GAP = 0.834045908801
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmparallelmemory1024_moe8
+GAP = 0.835235503218
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,video_very_deep_combine_chain
+GAP = 0.833723731659
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8
+GAP = 0.833104488978
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4
+GAP = 0.833324163897
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8
+GAP = 0.834484898844
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,video_very_deep_combine_chain
+GAP = 0.832930582133
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.832377724469
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.833414957585
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.832301392579
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.833769221192
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.832408546437
+------------------------------------------------
+cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.833437630091
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8
+GAP = 0.834464961259
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4
+GAP = 0.834659214213
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8
+GAP = 0.835789192715
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,video_very_deep_combine_chain
+GAP = 0.835273660124
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.833592380025
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.834699040434
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.834399178828
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.834979500288
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.834599103937
+------------------------------------------------
+cnn_deep_combine_chain,lstm_attention8_max,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.835657070379
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.832603654742
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.8337961468
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.833522575937
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.833995288321
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.833691549239
+------------------------------------------------
+cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.834677051398
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.832988258644
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.83279736014
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.833836412621
+------------------------------------------------
+cnn_deep_combine_chain,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.834129839666
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8
+GAP = 0.833393442149
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell2048_layer2_moe4
+GAP = 0.833546049331
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmparallelmemory1024_moe8
+GAP = 0.834839753828
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,video_very_deep_combine_chain
+GAP = 0.83420746933
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
+GAP = 0.83240292504
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,lstmparallelmemory1024_moe8
+GAP = 0.833633371649
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell1024_layer2_moe8,video_very_deep_combine_chain
+GAP = 0.833366664258
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
+GAP = 0.833897307363
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmemory_cell2048_layer2_moe4,video_very_deep_combine_chain
+GAP = 0.833519613265
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstm_attention8_max,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
+GAP = 0.834663565256
+------------------------------------------------
+deep_cnn_deep_combine_chain,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4

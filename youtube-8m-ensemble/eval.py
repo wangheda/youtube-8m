@@ -52,6 +52,7 @@ if __name__ == "__main__":
 
   # Other flags.
   flags.DEFINE_boolean("run_once", True, "Whether to run eval only once.")
+  flags.DEFINE_boolean("echo_gap", False, "Whether to echo GAP at the end.")
   flags.DEFINE_integer("top_k", 20, "How many predictions to output per video.")
 
 def find_class_by_name(name, modules):
@@ -224,6 +225,8 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
           global_step_val,
           epoch_info_dict,
           summary_scope="Eval")
+      if FLAGS.echo_gap:
+        print "GAP =", epoch_info_dict["gap"]
       logging.info(epochinfo)
       evl_metrics.clear()
     except Exception as e:  # pylint: disable=broad-except
