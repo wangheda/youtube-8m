@@ -1,5 +1,6 @@
 
-for part in ensemble_train ensemble_validate test; do 
+#for part in ensemble_train ensemble_validate test; do 
+for part in train_samples; do 
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
 	      --output_dir="/Youtube-8M/model_predictions/${part}/video_very_deep_combine_chain" \
         --model_checkpoint_path="../model/video_chain_moe2_verydeep_combine/model.ckpt-28403" \

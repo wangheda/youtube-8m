@@ -1,5 +1,6 @@
 
-for part in ensemble_train ensemble_validate test; do 
+#for part in ensemble_train ensemble_validate test; do 
+for part in train_samples; do 
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
         --output_dir="/Youtube-8M/model_predictions/${part}/lstmmemory_cell2048_layer2_moe4" \
         --model_checkpoint_path="../model/lstmmemory2048_moe4_batch128/model.ckpt-109434" \

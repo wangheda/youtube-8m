@@ -1,5 +1,6 @@
 
-for part in ensemble_train ensemble_validate test; do 
+#for part in ensemble_train ensemble_validate test; do 
+for part in train_samples; do 
     CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble.py \
 	      --output_dir="/Youtube-8M/model_predictions/${part}/lstmmemory_cell1024_layer2_moe8" \
         --model_checkpoint_path="../model/lstmmemory1024_moe8/model.ckpt-123144" \
