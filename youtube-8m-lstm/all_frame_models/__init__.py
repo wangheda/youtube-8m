@@ -39,3 +39,4 @@ from multires_lstm_memory_deep_combine_chain_model import *
 from framehop_lstm_memory_deep_combine_chain_model import *
 from framehop_lstm_memory_model import *
 from lstm_look_back_model import *
+from lstm_auxloss_deep_combine_chain_model import *
