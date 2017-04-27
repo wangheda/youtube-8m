@@ -1,0 +1,7 @@
+# bash [script] [model_name] [config]
+# use a different model name each time, make it understandable
+# create a new conf file, add it to git repository
+
+bash ensemble_scripts/train-mean_model.sh ensemble_mean_model_10 ensemble_scripts/ensemble_no3.conf
+bash ensemble_scripts/eval-mean_model.sh ensemble_mean_model_10 ensemble_scripts/ensemble_no3.conf
+bash ensemble_scripts/infer-mean_model.sh ensemble_mean_model_10 ensemble_scripts/ensemble_no3.conf
