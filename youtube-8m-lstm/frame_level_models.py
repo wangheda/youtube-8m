@@ -65,6 +65,9 @@ flags.DEFINE_string("wide_and_deep_models", "FrameLevelLogisticModel,LstmMemoryM
 flags.DEFINE_integer("deep_cnn_base_size", 128,
                      "basic cnn size")
 
+flags.DEFINE_integer("lstm_look_back", 3,
+                     "how many adjacent input for a cell to look at")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:
