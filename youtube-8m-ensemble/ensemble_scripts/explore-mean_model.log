@@ -1,26 +1,31 @@
+single model
+------------------------------------------------
 cnn_deep_combine_chain
 GAP = 0.816665221681
-------------------------------------------------
-deep_cnn_deep_combine_chain
-GAP = 0.814806325097
 ------------------------------------------------
 lstm_attention8_max
 GAP = 0.815108872388
 ------------------------------------------------
+lstmparallelmemory1024_moe8
+GAP = 0.814833331691
+------------------------------------------------
+deep_cnn_deep_combine_chain
+GAP = 0.814806325097
+------------------------------------------------
 lstmmem1024_layer2_moe4_deep_combine_chain_add_length
 GAP = 0.814129286481
-------------------------------------------------
-lstmmemory_cell1024_layer2_moe8
-GAP = 0.812080163135
 ------------------------------------------------
 lstmmemory_cell2048_layer2_moe4
 GAP = 0.813540507351
 ------------------------------------------------
-lstmparallelmemory1024_moe8
-GAP = 0.814833331691
+lstmmemory_cell1024_layer2_moe8
+GAP = 0.812080163135
 ------------------------------------------------
 video_very_deep_combine_chain
 GAP = 0.810174420122
+------------------------------------------------
+
+2-model ensemble
 ------------------------------------------------
 cnn_deep_combine_chain,deep_cnn_deep_combine_chain
 GAP = 0.82557031245
@@ -105,6 +110,9 @@ GAP = 0.825870841013
 ------------------------------------------------
 lstmparallelmemory1024_moe8,video_very_deep_combine_chain
 GAP = 0.827311197228
+------------------------------------------------
+
+3-model ensemble
 ------------------------------------------------
 cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max
 GAP = 0.832191332449
@@ -273,6 +281,9 @@ GAP = 0.830592592778
 ------------------------------------------------
 lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
 GAP = 0.830995957639
+------------------------------------------------
+
+4-model ensemble
 ------------------------------------------------
 cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length
 GAP = 0.834859637855
@@ -484,6 +495,9 @@ GAP = 0.833219017873
 lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
 GAP = 0.832099590832
 ------------------------------------------------
+
+5-model ensemble
+------------------------------------------------
 cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8
 GAP = 0.835438033957
 ------------------------------------------------
@@ -652,6 +666,9 @@ GAP = 0.83455284016
 lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
 GAP = 0.833675261416
 ------------------------------------------------
+
+6-model ensemble
+------------------------------------------------
 cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4
 GAP = 0.835764820291
 ------------------------------------------------
@@ -736,6 +753,9 @@ GAP = 0.834914528567
 lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
 GAP = 0.835543683299
 ------------------------------------------------
+
+7-model ensemble
+------------------------------------------------
 cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8
 GAP = 0.836664222772
 ------------------------------------------------
@@ -759,6 +779,9 @@ GAP = 0.837045884874
 ------------------------------------------------
 deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
 GAP = 0.836382105823
+------------------------------------------------
+
+8-model ensemble
 ------------------------------------------------
 cnn_deep_combine_chain,deep_cnn_deep_combine_chain,lstm_attention8_max,lstmmem1024_layer2_moe4_deep_combine_chain_add_length,lstmmemory_cell1024_layer2_moe8,lstmmemory_cell2048_layer2_moe4,lstmparallelmemory1024_moe8,video_very_deep_combine_chain
 GAP = 0.837375440061
