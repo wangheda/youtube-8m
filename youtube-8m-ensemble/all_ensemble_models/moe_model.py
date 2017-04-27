@@ -35,31 +35,21 @@ class MoeModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       batch_size x num_classes.
     """
-    num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+    num_methods = model_input.get_shape().as_list()[-1]
+    num_features = model_input.get_shape().as_list()[-2]
 
-    gate_activations = slim.fully_connected(
-        model_input,
-        vocab_size * (num_mixtures + 1),
-        activation_fn=None,
-        biases_initializer=None,
-        weights_regularizer=slim.l2_regularizer(l2_penalty),
-        scope="gates"+sub_scope)
-    expert_activations = slim.fully_connected(
-        model_input,
-        vocab_size * num_mixtures,
-        activation_fn=None,
-        weights_regularizer=slim.l2_regularizer(l2_penalty),
-        scope="experts"+sub_scope)
+    flat_input = tf.reshape(model_input, shape=[-1,num_features * num_methods])
 
-    gating_distribution = tf.nn.softmax(tf.reshape(
-        gate_activations,
-        [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
-    expert_distribution = tf.nn.sigmoid(tf.reshape(
-        expert_activations,
-        [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+    tensor_weight = tf.get_variable("tensor_weight",
+        shape=[num_features, num_methods, num_methods],
+        regularizer=slim.l2_regularizer(l2_penalty))
+    tensor_bias = tf.get_variable("tensor_bias",
+        shape=[num_features, num_methods],
+        initializer=tf.zeros_initializer(),
+        regularizer=slim.l2_regularizer(l2_penalty))
 
-    final_probabilities_by_class_and_batch = tf.reduce_sum(
-        gating_distribution[:, :num_mixtures] * expert_distribution, 1)
-    final_probabilities = tf.reshape(final_probabilities_by_class_and_batch,
-                                     [-1, vocab_size])
-    return {"predictions": final_probabilities}
+    gate_activations = tf.einsum("ijk,jkl->ijl", model_input, tensor_weight) \
+        + tf.expand_dims(tensor_bias, dim=0)
+
+    output = tf.reduce_sum(model_input * tf.nn.softmax(gate_activations), axis=2)
+    return {"predictions": output}
