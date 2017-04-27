@@ -1,4 +1,3 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,67 +10,49 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Binary for evaluating Tensorflow models on the YouTube-8M dataset."""
 
-"""Binary for generating predictions over a set of videos."""
-
-import os
 import time
 
 import numpy
+import eval_util
+import losses
+import ensemble_level_models
+import readers
 import tensorflow as tf
-
 from tensorflow import app
 from tensorflow import flags
 from tensorflow import gfile
 from tensorflow import logging
-
-import eval_util
-import losses
-import readers
 import utils
 
 FLAGS = flags.FLAGS
 
-if __name__ == '__main__':
-  flags.DEFINE_string("train_dir", "/tmp/yt8m_model/",
-                      "The directory to load the model files from.")
+if __name__ == "__main__":
+  # Dataset flags.
   flags.DEFINE_string("model_checkpoint_path", "",
-                      "The file path to load the model from.")
+                      "The file to load the model files from. ")
   flags.DEFINE_string("output_file", "",
                       "The file to save the predictions to.")
   flags.DEFINE_string(
-      "input_data_pattern", "",
-      "File glob defining the evaluation dataset in tensorflow.SequenceExample "
-      "format. The SequenceExamples are expected to have an 'rgb' byte array "
-      "sequence feature as well as a 'labels' int64 context feature.")
+      "input_data_patterns", "",
+      "File globs defining the evaluation dataset in tensorflow.SequenceExample format.")
+  flags.DEFINE_string("feature_names", "predictions", "Name of the feature "
+                      "to use for training.")
+  flags.DEFINE_string("feature_sizes", "4716", "Length of the feature vectors.")
 
   # Model flags.
-  flags.DEFINE_bool(
-      "frame_features", False,
-      "If set, then --eval_data_pattern must be frame-level features. "
-      "Otherwise, --eval_data_pattern must be aggregated video-level "
-      "features. The model must also be set appropriately (i.e. to read 3D "
-      "batches VS 4D batches.")
-  flags.DEFINE_integer(
-      "batch_size", 8192,
-      "How many examples to process per batch.")
-  flags.DEFINE_string("feature_names", "mean_rgb", "Name of the feature "
-                      "to use for training.")
-  flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
-
+  flags.DEFINE_string(
+      "model", "LinearRegressionModel",
+      "Which architecture to use for the model.")
+  flags.DEFINE_integer("batch_size", 256,
+                       "How many examples to process per batch.")
+  flags.DEFINE_string("label_loss", "CrossEntropyLoss",
+                      "Loss computed on validation data")
 
   # Other flags.
-  flags.DEFINE_integer("num_readers", 1,
-                       "How many threads to use for reading input files.")
-  flags.DEFINE_integer("top_k", 20,
-                       "How many predictions to output per video.")
-
-  flags.DEFINE_bool(
-      "dropout", False,
-      "Whether to consider dropout")
-  flags.DEFINE_float("keep_prob", 1.0, 
-      "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
-
+  flags.DEFINE_boolean("run_once", True, "Whether to run eval only once.")
+  flags.DEFINE_integer("top_k", 20, "How many predictions to output per video.")
 
 def format_lines(video_ids, predictions, top_k):
   batch_size = len(video_ids)
@@ -79,139 +60,198 @@ def format_lines(video_ids, predictions, top_k):
     top_indices = numpy.argpartition(predictions[video_index], -top_k)[-top_k:]
     line = [(class_index, predictions[video_index][class_index])
             for class_index in top_indices]
-  #  print("Type - Test :")
-  #  print(type(video_ids[video_index]))
-  #  print(video_ids[video_index].decode('utf-8'))
     line = sorted(line, key=lambda p: -p[1])
     yield video_ids[video_index].decode('utf-8') + "," + " ".join("%i %f" % pair
                                                   for pair in line) + "\n"
 
 
-def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
-  """Creates the section of the graph which reads the input data.
+def find_class_by_name(name, modules):
+  """Searches the provided modules for the named class and returns it."""
+  modules = [getattr(module, name, None) for module in modules]
+  return next(a for a in modules if a)
 
-  Args:
-    reader: A class which parses the input data.
-    data_pattern: A 'glob' style path to the data files.
-    batch_size: How many examples to process at a time.
-    num_readers: How many I/O threads to use.
 
-  Returns:
-    A tuple containing the features tensor, labels tensor, and optionally a
-    tensor containing the number of frames per video. The exact dimensions
-    depend on the reader being used.
-
-  Raises:
-    IOError: If no files matching the given pattern were found.
-  """
-  with tf.name_scope("input"):
+def get_input_data_tensors(reader,
+                                 data_pattern,
+                                 batch_size=256):
+  logging.info("Using batch size of " + str(batch_size) + " for evaluation.")
+  with tf.name_scope("eval_input"):
     files = gfile.Glob(data_pattern)
     if not files:
-      raise IOError("Unable to find input files. data_pattern='" +
-                    data_pattern + "'")
-    logging.info("number of input files: " + str(len(files)))
+      raise IOError("Unable to find the evaluation files.")
+    logging.info("number of evaluation files: " + str(len(files)))
+    files.sort()
     filename_queue = tf.train.string_input_producer(
-        files, num_epochs=1, shuffle=False)
-    examples_and_labels = [reader.prepare_reader(filename_queue)
-                           for _ in range(num_readers)]
+        files, shuffle=False, num_epochs=1)
+    eval_data = reader.prepare_reader(filename_queue)
+    return tf.train.batch(
+        eval_data,
+        batch_size=batch_size,
+        capacity=3 * batch_size,
+        allow_smaller_final_batch=True,
+        enqueue_many=True)
 
-    video_id_batch, video_batch, unused_labels, num_frames_batch = (
-        tf.train.batch_join(examples_and_labels,
-                            batch_size=batch_size,
-                            allow_smaller_final_batch = True,
-                            enqueue_many=True))
-    return video_id_batch, video_batch, num_frames_batch
 
-def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
+def build_graph(all_readers,
+                model,
+                all_data_patterns,
+                label_loss_fn,
+                batch_size=256):
+  """Creates the Tensorflow graph for evaluation.
+
+  Args:
+    all_readers: The data file reader. It should inherit from BaseReader.
+    model: The core model (e.g. logistic or neural net). It should inherit
+           from BaseModel.
+    all_data_patterns: glob path to the evaluation data files.
+    label_loss_fn: What kind of loss to apply to the model. It should inherit
+                from BaseLoss.
+    batch_size: How many examples to process at a time.
+  """
+
+  global_step = tf.Variable(0, trainable=False, name="global_step")
+
+  model_input_raw_tensors = []
+  labels_batch_tensor = None
+  video_id_batch = None
+  for reader, data_pattern in zip(all_readers, all_data_patterns):
+    unused_video_id, model_input_raw, labels_batch, unused_num_frames = (
+        get_input_data_tensors(
+            reader,
+            data_pattern,
+            batch_size=batch_size))
+    if labels_batch_tensor is None:
+      labels_batch_tensor = labels_batch
+    if video_id_batch is None:
+      video_id_batch = unused_video_id
+    model_input_raw_tensors.append(tf.expand_dims(model_input_raw, axis=2))
+  model_input = tf.concat(model_input_raw_tensors, axis=2)
+  labels_batch = labels_batch_tensor
+
+  with tf.name_scope("model"):
+    result = model.create_model(model_input,
+                                labels=labels_batch,
+                                vocab_size=reader.num_classes,
+                                is_training=False)
+    predictions = result["predictions"]
+    if "loss" in result.keys():
+      label_loss = result["loss"]
+    else:
+      label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+
+  tf.add_to_collection("global_step", global_step)
+  tf.add_to_collection("loss", label_loss)
+  tf.add_to_collection("predictions", predictions)
+  tf.add_to_collection("input_batch", model_input)
+  tf.add_to_collection("video_id_batch", video_id_batch)
+  tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
+
+
+def inference_loop(video_id_batch, prediction_batch, label_batch, loss,
+              saver, out_file_location):
+
+  top_k = FLAGS.top_k
   with tf.Session() as sess, gfile.Open(out_file_location, "w+") as out_file:
-    video_id_batch, video_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
-    if FLAGS.model_checkpoint_path:
-      latest_checkpoint = FLAGS.model_checkpoint_path
+    checkpoint = FLAGS.model_checkpoint_path
+    if checkpoint:
+      logging.info("Loading checkpoint for eval: " + checkpoint)
+      # Restores from checkpoint
+      saver.restore(sess, checkpoint)
+      # Assuming model_checkpoint_path looks something like:
+      # /my-favorite-path/yt8m_train/model.ckpt-0, extract global_step from it.
+      global_step_val = checkpoint.split("/")[-1].split("-")[-1]
     else:
-      latest_checkpoint = tf.train.latest_checkpoint(train_dir)
-    if latest_checkpoint is None:
-      raise Exception("unable to find a checkpoint at location: %s" % train_dir)
-    else:
-      meta_graph_location = latest_checkpoint + ".meta"
-      logging.info("loading meta-graph: " + meta_graph_location)
-    saver = tf.train.import_meta_graph(meta_graph_location, clear_devices=True)
-    logging.info("restoring variables from " + latest_checkpoint)
-    saver.restore(sess, latest_checkpoint)
-    input_tensor = tf.get_collection("input_batch_raw")[0]
-    num_frames_tensor = tf.get_collection("num_frames")[0]
-    predictions_tensor = tf.get_collection("predictions")[0]
-    if FLAGS.dropout:
-      keep_prob_tensor = tf.get_collection("keep_prob")[0]
+      logging.info("No checkpoint file found.")
+      return global_step_val
 
-    # Workaround for num_epochs issue.
-    def set_up_init_ops(variables):
-      init_op_list = []
-      for variable in list(variables):
-        if "train_input" in variable.name:
-          init_op_list.append(tf.assign(variable, 1))
-          variables.remove(variable)
-      init_op_list.append(tf.variables_initializer(variables))
-      return init_op_list
+    sess.run([tf.local_variables_initializer()])
 
-    sess.run(set_up_init_ops(tf.get_collection_ref(
-        tf.GraphKeys.LOCAL_VARIABLES)))
-
+    # Start the queue runners.
+    fetches = [video_id_batch, prediction_batch]
     coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-    num_examples_processed = 0
-    start_time = time.time()
-    out_file.write("VideoId,LabelConfidencePairs\n")
-
     try:
+      threads = []
+      for qr in tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS):
+        threads.extend(qr.create_threads(
+            sess, coord=coord, daemon=True,
+            start=True))
+      logging.info("enter eval_once loop global_step_val = %s. ",
+                   global_step_val)
+
+      num_examples_processed = 0
+      start_time = time.time()
+      out_file.write("VideoId,LabelConfidencePairs\n")
+
       while not coord.should_stop():
-          video_id_batch_val, video_batch_val,num_frames_batch_val = sess.run([video_id_batch, video_batch, num_frames_batch])
-          if FLAGS.dropout:
-            predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val, keep_prob_tensor: FLAGS.keep_prob})
-          else:
-            predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
-          now = time.time()
-          num_examples_processed += len(video_batch_val)
-          num_classes = predictions_val.shape[1]
-          logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
-          for line in format_lines(video_id_batch_val, predictions_val, top_k):
-            out_file.write(line)
-          out_file.flush()
+        batch_start_time = time.time()
+
+        video_id_val, predictions_val = sess.run(fetches)
+
+        now = time.time()
+        num_examples_processed += len(video_id_val)
+        logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
+        for line in format_lines(video_id_val, predictions_val, top_k):
+          out_file.write(line)
+        out_file.flush()
+
+    except tf.errors.OutOfRangeError as e:
+      logging.info('Done with inference. The output file was written to ' + out_file_location)
+    except Exception as e:  # pylint: disable=broad-except
+      logging.info("Unexpected exception: " + str(e))
+      coord.request_stop(e)
+
+    coord.request_stop()
+    coord.join(threads, stop_grace_period_secs=10)
 
 
-    except tf.errors.OutOfRangeError:
-        logging.info('Done with inference. The output file was written to ' + out_file_location)
-    finally:
-        coord.request_stop()
+def inference():
+  tf.set_random_seed(0)  # for reproducibility
+  with tf.Graph().as_default():
+    # convert feature_names and feature_sizes to lists of values
+    feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
+        FLAGS.feature_names, FLAGS.feature_sizes)
 
-    coord.join(threads)
-    sess.close()
+    # prepare a reader for each single model prediction result
+    all_readers = []
 
+    all_patterns = FLAGS.input_data_patterns
+    all_patterns = map(lambda x: x.strip(), all_patterns.strip().strip(",").split(","))
+    for i in xrange(len(all_patterns)):
+      reader = readers.EnsembleReader(
+          feature_names=feature_names, feature_sizes=feature_sizes)
+      all_readers.append(reader)
+
+    model = find_class_by_name(FLAGS.model, [ensemble_level_models])()
+    label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
+
+    if FLAGS.input_data_patterns is "":
+      raise IOError("'input_data_patterns' was not specified. " +
+                     "Nothing to evaluate.")
+
+    build_graph(
+        all_readers=all_readers,
+        model=model,
+        all_data_patterns=all_patterns,
+        label_loss_fn=label_loss_fn,
+        batch_size=FLAGS.batch_size)
+    logging.info("built evaluation graph")
+    video_id_batch = tf.get_collection("video_id_batch")[0]
+    prediction_batch = tf.get_collection("predictions")[0]
+    label_batch = tf.get_collection("labels")[0]
+    loss = tf.get_collection("loss")[0]
+
+    saver = tf.train.Saver(tf.global_variables())
+
+    inference_loop(video_id_batch, prediction_batch,
+                   label_batch, loss,
+                   saver, FLAGS.output_file)
 
 def main(unused_argv):
   logging.set_verbosity(tf.logging.INFO)
-
-  # convert feature_names and feature_sizes to lists of values
-  feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
-      FLAGS.feature_names, FLAGS.feature_sizes)
-
-  if FLAGS.frame_features:
-    reader = readers.YT8MFrameFeatureReader(feature_names=feature_names,
-                                            feature_sizes=feature_sizes)
-  else:
-    reader = readers.YT8MAggregatedFeatureReader(feature_names=feature_names,
-                                                 feature_sizes=feature_sizes)
-
-  if FLAGS.output_file is "":
-    raise ValueError("'output_file' was not specified. "
-      "Unable to continue with inference.")
-
-  if FLAGS.input_data_pattern is "":
-    raise ValueError("'input_data_pattern' was not specified. "
-      "Unable to continue with inference.")
-
-  inference(reader, FLAGS.train_dir, FLAGS.input_data_pattern,
-    FLAGS.output_file, FLAGS.batch_size, FLAGS.top_k)
+  print("tensorflow version: %s" % tf.__version__)
+  inference()
 
 
 if __name__ == "__main__":
   app.run()
+

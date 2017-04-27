@@ -8,6 +8,6 @@ for part in train_samples; do
 	      --frame_features=True \
 	      --feature_names="rgb,audio" \
 	      --feature_sizes="1024,128" \
-	      --batch_size=64 \
+	      --batch_size=32 \
 	      --file_size=4096
 done
