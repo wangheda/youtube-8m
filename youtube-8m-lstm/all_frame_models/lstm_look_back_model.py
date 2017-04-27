@@ -10,7 +10,24 @@ import tensorflow.contrib.slim as slim
 from tensorflow import flags
 FLAGS = flags.FLAGS
 
-class LstmParallelFinaloutputModel(models.BaseModel):
+class LstmLookBackModel(models.BaseModel):
+
+  def shift(self, 
+          model_input, 
+          shift_width,
+          **unused_params):
+    max_frames = model_input.get_shape().as_list()[1]
+    num_features = model_input.get_shape().as_list()[2]
+
+    shift_inputs = []
+    for i in xrange(shift_width):
+      if i == 0:
+        shift_inputs.append(model_input)
+      else:
+        shift_inputs.append(tf.pad(model_input, paddings=[[0,0],[i,0],[0,0]])[:,:max_frames,:])
+
+    shift_output = tf.concat(shift_inputs, axis=2)
+    return shift_output
 
   def create_model(self, model_input, vocab_size, num_frames, **unused_params):
     """Creates a model which uses a stack of LSTMs to represent the video.
@@ -28,22 +45,29 @@ class LstmParallelFinaloutputModel(models.BaseModel):
       'batch_size' x 'num_classes'.
     """
     number_of_layers = FLAGS.lstm_layers
+    shift_width = FLAGS.lstm_look_back
 
     lstm_sizes = map(int, FLAGS.lstm_cells.split(","))
     feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
         FLAGS.feature_names, FLAGS.feature_sizes)
+
     sub_inputs = [tf.nn.l2_normalize(x, dim=2) for x in tf.split(model_input, feature_sizes, axis = 2)]
 
     assert len(lstm_sizes) == len(feature_sizes), \
       "length of lstm_sizes (={}) != length of feature_sizes (={})".format( \
       len(lstm_sizes), len(feature_sizes))
 
+    if shift_width < 1:
+      shift_width = 1
+    
     outputs = []
     states = []
     for i in xrange(len(feature_sizes)):
       with tf.variable_scope("RNN%d" % i):
         sub_input = sub_inputs[i]
         lstm_size = lstm_sizes[i]
+        look_back = self.shift(sub_input, shift_width=shift_width)
+
         ## Batch normalize the input
         stacked_lstm = tf.contrib.rnn.MultiRNNCell(
                 [
@@ -53,7 +77,7 @@ class LstmParallelFinaloutputModel(models.BaseModel):
                     ],
                 state_is_tuple=True)
 
-        output, state = tf.nn.dynamic_rnn(stacked_lstm, sub_input,
+        output, state = tf.nn.dynamic_rnn(stacked_lstm, look_back,
                                          sequence_length=num_frames,
                                          swap_memory=FLAGS.rnn_swap_memory,
                                          dtype=tf.float32)
