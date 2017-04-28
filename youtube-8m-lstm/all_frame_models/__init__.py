@@ -15,6 +15,7 @@ from layernorm_lstm_memory_model import *
 from lstm_parallel_memory_model import *
 from lstm_parallel_finaloutput_model import *
 from cnn_deep_combine_chain_model import *
+from lstm_cnn_deep_combine_chain_model import *
 from deep_cnn_deep_combine_chain_model import *
 from cnn_lstm_memory_model import *
 from cnn_lstm_memory_multitask_model import *
@@ -39,3 +40,4 @@ from multires_lstm_memory_deep_combine_chain_model import *
 from framehop_lstm_memory_deep_combine_chain_model import *
 from framehop_lstm_memory_model import *
 from lstm_look_back_model import *
+from lstm_auxloss_deep_combine_chain_model import *
