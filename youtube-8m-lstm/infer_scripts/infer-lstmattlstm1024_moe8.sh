@@ -7,6 +7,6 @@ for part in test ensemble_train ensemble_validate train_samples; do
 	      --frame_features=True \
 	      --feature_names="rgb,audio" \
 	      --feature_sizes="1024,128" \
-	      --batch_size=32 \
+	      --batch_size=64 \
 	      --file_size=4096
 done

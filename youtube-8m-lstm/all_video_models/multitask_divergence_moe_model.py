@@ -6,45 +6,24 @@ from tensorflow import flags
 import tensorflow.contrib.slim as slim
 FLAGS = flags.FLAGS
 
-class DeepCombineChainModel(models.BaseModel):
+class MultiTaskDivergenceMoeModel(models.BaseModel):
   """A softmax over a mixture of logistic models (with L2 regularization)."""
 
   def create_model(self, model_input, vocab_size, num_mixtures=None,
-                   l2_penalty=1e-8, sub_scope="", original_input=None, 
+                   l2_penalty=1e-8, sub_scope="ddcc", original_input=None, 
                    dropout=False, keep_prob=None, noise_level=None,
-                   num_frames=None,
-                   **unused_params):
+                   num_frames=None, **unused_params):
     num_supports = FLAGS.num_supports
-    num_layers = FLAGS.deep_chain_layers
-    relu_cells = FLAGS.deep_chain_relu_cells
-    relu_type = FLAGS.deep_chain_relu_type
-    use_length = FLAGS.deep_chain_use_length
+    num_models = FLAGS.divergence_model_count
 
-    next_input = model_input
     support_predictions = []
-    for layer in xrange(num_layers):
-      sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer, dropout=dropout, keep_prob=keep_prob, noise_level=noise_level)
-      sub_activation = slim.fully_connected(
-          sub_prediction,
-          relu_cells,
-          activation_fn=None,
-          weights_regularizer=slim.l2_regularizer(l2_penalty),
-          scope=sub_scope+"relu-%d"%layer)
-
-      if relu_type == "elu":
-        sub_relu = tf.nn.elu(sub_activation)
-      else: # default: relu
-        sub_relu = tf.nn.relu(sub_activation)
-
-      if noise_level is not None:
-        print "adding noise to sub_relu, level = ", noise_level
-        sub_relu = sub_relu + tf.random_normal(tf.shape(sub_relu), mean=0.0, stddev=noise_level)
-
-      relu_norm = tf.nn.l2_normalize(sub_relu, dim=1)
-      next_input = tf.concat([next_input, relu_norm], axis=1)
+    for i in xrange(num_models):
+      sub_prediction = self.sub_model(model_input,vocab_size, num_mixtures, 
+                                      l2_penalty, sub_scope+"%d"%i,
+                                      dropout, keep_prob, noise_level)
       support_predictions.append(sub_prediction)
-    main_predictions = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"-main")
-    support_predictions = tf.concat(support_predictions, axis=1)
+    support_predictions = tf.stack(support_predictions, axis=1)
+    main_predictions = tf.reduce_mean(support_predictions, axis=1)
     return {"predictions": main_predictions, "support_predictions": support_predictions}
 
   def sub_model(self, model_input, vocab_size, num_mixtures=None, 

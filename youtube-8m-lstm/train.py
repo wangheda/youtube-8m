@@ -285,6 +285,7 @@ def build_graph(reader,
     for variable in slim.get_model_variables():
       tf.summary.histogram(variable.op.name, variable)
 
+    print "result", result
     predictions = result["predictions"]
     if "loss" in result.keys():
       label_loss = result["loss"]
@@ -292,6 +293,7 @@ def build_graph(reader,
       if FLAGS.multitask:
         support_predictions = result["support_predictions"]
         tf.summary.histogram("model/support_predictions", support_predictions)
+        print "support_predictions", support_predictions
         label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch)
       else:
         label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
