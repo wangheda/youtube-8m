@@ -11,3 +11,5 @@ from chain_support_relu_moe_model import *
 from shortcut_chain_support_relu_moe_model import *
 from multitask_moe_model import *
 from stage2_logistic_model import *
+from multitask_divergence_moe_model import *
+from multitask_divergence_deep_combine_chain_model import *

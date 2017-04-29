@@ -38,6 +38,9 @@ if __name__ == "__main__":
   flags.DEFINE_string(
       "train_data_patterns", "",
       "Multiple file globs for the training dataset.")
+  flags.DEFINE_string(
+      "input_data_pattern", "",
+      "File globs for original model input.")
   flags.DEFINE_string("feature_names", "predictions", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "4716", "Length of the feature vectors.")
@@ -126,6 +129,8 @@ def find_class_by_name(name, modules):
 
 
 def build_graph(all_readers,
+                input_reader,
+                input_data_pattern,
                 model,
                 all_train_data_patterns,
                 label_loss_fn=losses.CrossEntropyLoss(),
@@ -183,6 +188,15 @@ def build_graph(all_readers,
     if labels_batch_tensor is None:
       labels_batch_tensor = labels_batch
     model_input_raw_tensors.append(tf.expand_dims(model_input_raw, axis=2))
+
+  original_input = None
+  if input_data_pattern is not None:
+    unused_video_id, original_input, unused_labels_batch, unused_num_frames = (
+        get_input_data_tensors(
+            input_reader,
+            input_data_pattern,
+            batch_size=batch_size,
+            num_epochs=num_epochs))
   
   model_input = tf.concat(model_input_raw_tensors, axis=2)
   labels_batch = labels_batch_tensor
@@ -200,6 +214,7 @@ def build_graph(all_readers,
           model_input,
           labels=labels_batch,
           vocab_size=reader.num_classes,
+          original_input=original_input,
           dropout=FLAGS.dropout,
           keep_prob=keep_prob_tensor,
           noise_level=noise_level_tensor)
@@ -208,6 +223,7 @@ def build_graph(all_readers,
           model_input,
           labels=labels_batch,
           vocab_size=reader.num_classes,
+          original_input=original_input,
           noise_level=noise_level_tensor)
 
     for variable in slim.get_model_variables():
@@ -468,12 +484,21 @@ class Trainer(object):
       all_readers.append(readers.EnsembleReader(
           feature_names=feature_names, feature_sizes=feature_sizes))
 
+    input_reader = None
+    input_data_pattern = None
+    if FLAGS.input_data_pattern is not None:
+      input_reader = readers.EnsembleReader(
+          feature_names=["input"], feature_sizes=[1024+128])
+      input_data_pattern = FLAGS.input_data_pattern
+
     # Find the model.
     model = find_class_by_name(FLAGS.model, [ensemble_level_models])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
     optimizer_class = find_class_by_name(FLAGS.optimizer, [tf.train])
 
     build_graph(all_readers=all_readers,
+                input_reader=input_reader,
+                input_data_pattern=input_data_pattern,
                 model=model,
                 optimizer_class=optimizer_class,
                 clip_gradient_norm=FLAGS.clip_gradient_norm,
