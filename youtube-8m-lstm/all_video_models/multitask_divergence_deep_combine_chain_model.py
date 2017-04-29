@@ -75,7 +75,7 @@ class MultiTaskDivergenceDeepCombineChainModel(models.BaseModel):
     main_predictions = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"-main")
     support_predictions = tf.reduce_mean(tf.stack(support_predictions, axis=0), axis=0)
 
-    ratio = min(FLAGS.support_loss_percent * num_layers, 0.2)
+    ratio = min(FLAGS.support_loss_percent, 0.2)
     final_predictions = main_predictions * (1.0 - ratio) + support_predictions * ratio
     return final_predictions
 
