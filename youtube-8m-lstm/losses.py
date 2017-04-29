@@ -93,6 +93,20 @@ class WeightedCrossEntropyLoss(BaseLoss):
       return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
 
 
+class MeanSquareErrorLoss(BaseLoss):
+  """Calculate the MSE loss between the predictions and labels.
+  """
+
+  def calculate_loss(self, predictions, labels, **unused_params):
+    with tf.name_scope("loss_xent"):
+      epsilon = 10e-6
+      if FLAGS.label_smoothing:
+        float_labels = smoothing(labels)
+      else:
+        float_labels = tf.cast(labels, tf.float32)
+      mse_loss = tf.square(float_labels - predictions)
+      return tf.reduce_mean(tf.reduce_sum(mse_loss, 1))
+
 class CrossEntropyLoss(BaseLoss):
   """Calculate the cross entropy loss between the predictions and labels.
   """
@@ -360,6 +374,36 @@ class MultiTaskDivergenceCrossEntropyLoss(MultiTaskLoss):
     # The cross entropy between predictions and mean predictions
     divergence = ce_loss_fn.calculate_loss(support_predictions, support_means, **unused_params)
 
-    loss = cross_entropy_loss * (1.0 - FLAGS.support_loss_percent) + divergence * FLAGS.support_loss_percent
+    loss = cross_entropy_loss * (1.0 - FLAGS.support_loss_percent) - divergence * FLAGS.support_loss_percent
+    return loss
+
+class MultiTaskDivergenceCrossEntropyAndMSELoss(MultiTaskLoss):
+  """Calculate the loss between the predictions and labels.
+  """
+  def calculate_loss(self, predictions, support_predictions, labels, **unused_params):
+    """ 
+    support_predictions batch_size x num_models x num_classes
+    predictions = tf.reduce_mean(support_predictions, axis=1)
+    """
+    model_count = tf.shape(support_predictions)[1]
+    vocab_size = tf.shape(support_predictions)[2]
+
+    mean_predictions = tf.reduce_mean(support_predictions, axis=1, keep_dims=True)
+    support_labels = tf.tile(tf.expand_dims(tf.cast(labels, dtype=tf.float32), axis=1), multiples=[1,model_count,1])
+    support_means = tf.stop_gradient(tf.tile(mean_predictions, multiples=[1,model_count,1]))
+
+    support_predictions = tf.reshape(support_predictions, shape=[-1,model_count*vocab_size])
+    support_labels = tf.reshape(support_labels, shape=[-1,model_count*vocab_size])
+    support_means = tf.reshape(support_means, shape=[-1,model_count*vocab_size])
+
+    ce_loss_fn = CrossEntropyLoss()
+    # The cross entropy between predictions and ground truth
+    cross_entropy_loss = ce_loss_fn.calculate_loss(support_predictions, support_labels, **unused_params)
+
+    mse_loss_fn = MeanSquareErrorLoss()
+    # The square error between predictions and mean predictions
+    divergence = mse_loss_fn.calculate_loss(support_predictions, support_means, **unused_params)
+
+    loss = cross_entropy_loss * (1.0 - FLAGS.support_loss_percent) - divergence * FLAGS.support_loss_percent
     return loss
 
