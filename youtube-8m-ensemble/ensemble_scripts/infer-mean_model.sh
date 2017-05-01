@@ -10,6 +10,6 @@ echo "$test_data_patterns"
 
 CUDA_VISIBLE_DEVICES=0 python inference.py \
       --model_checkpoint_path="../model/${model}/model.ckpt-0" \
-      --output_file="../model/${model}/predictions.${model}.csv" \
+      --output_file="../model/${model}/predictions.csv" \
       --model="MeanModel" \
       --input_data_patterns="$test_data_patterns"
