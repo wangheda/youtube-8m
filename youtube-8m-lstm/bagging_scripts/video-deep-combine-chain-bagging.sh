@@ -1,15 +1,25 @@
 #!/bin/bash
 
 MODEL_DIR="../model/video_bagging"
-rm ../model/video_bagging/ensemble.conf
+rm ${MODEL_DIR}/ensemble.conf
 
-for i in {1..2}; do
+vocab_file="resources/train.video_id.vocab"
+
+if [ ! -f $vocab_file ]; then
+  cd resources
+  wget http://us.data.yt8m.org/1/ground_truth_labels/train_labels.csv
+  echo "OOV" > train.video_id.vocab
+  cat train_labels.csv | cut -d ',' -f 1 >> train.video_id.vocab
+  cd ..
+fi
+
+for i in {1..8}; do
   sub_model_dir="${MODEL_DIR}/sub_model_${i}"
   mkdir -p $sub_model_dir
 
   # generate freq file
   python training_utils/sample_freq.py \
-      --video_id_file="resources/train.video_id.vocab" \
+      --video_id_file="$vocab_file" \
       --output_freq_file="${sub_model_dir}/train.video_id.freq"
 
   # train N models with re-weighted samples
@@ -36,26 +46,26 @@ for i in {1..2}; do
     --data_augmenter=NoiseAugmenter \
     --input_noise_level=0.2 \
     --num_readers=2 \
-    --num_epochs=1 \
+    --num_epochs=5 \
     --batch_size=1024
 
   # inference-pre-ensemble
-  for part in ensemble_validate test; do
+  for part in test ensemble_validate ensemble_train; do
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
-	    --output_dir="/Youtube-8M/model_predictions/${part}/video_deep_combine_chain_bagging/sub_model_$i" \
+      --output_dir="/Youtube-8M/model_predictions/${part}/video_deep_combine_chain_bagging/sub_model_$i" \
       --train_dir="${sub_model_dir}" \
-	    --input_data_pattern="/Youtube-8M/data/video/${part}/*.tfrecord" \
-	    --frame_features=False \
-	    --feature_names="mean_rgb,mean_audio" \
-	    --feature_sizes="1024,128" \
-	    --batch_size=128 \
-	    --file_size=4096
+      --input_data_pattern="/Youtube-8M/data/video/${part}/*.tfrecord" \
+      --frame_features=False \
+      --feature_names="mean_rgb,mean_audio" \
+      --feature_sizes="1024,128" \
+      --batch_size=128 \
+      --file_size=4096
   done
 
-  echo "video_deep_combine_chain_bagging/sub_model_$i" >> ../model/video_bagging/ensemble.conf
+  echo "video_deep_combine_chain_bagging/sub_model_$i" >> ${MODEL_DIR}/ensemble.conf
 
 done
 
 cd ../youtube-8m-ensemble
-bash ensemble_scripts/eval-mean_model.sh video_bagging/ensemble_mean_model ../model/video_bagging/ensemble.conf
-bash ensemble_scripts/infer-mean_model.sh video_bagging/ensemble_mean_model ../model/video_bagging/ensemble.conf
+bash ensemble_scripts/eval-mean_model.sh video_bagging/ensemble_mean_model ${MODEL_DIR}/ensemble.conf
+bash ensemble_scripts/infer-mean_model.sh video_bagging/ensemble_mean_model ${MODEL_DIR}/ensemble.conf
