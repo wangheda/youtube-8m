@@ -21,6 +21,7 @@ class InputMoeModel(models.BaseModel):
     num_methods = model_input.get_shape().as_list()[-1]
     num_features = model_input.get_shape().as_list()[-2]
 
+    original_input = tf.nn.l2_normalize(original_input, dim=1)
     gate_activations = slim.fully_connected(
         original_input,
         num_methods,

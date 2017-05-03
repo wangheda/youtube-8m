@@ -37,6 +37,9 @@ if __name__ == "__main__":
   flags.DEFINE_string(
       "eval_data_patterns", "",
       "File globs defining the evaluation dataset in tensorflow.SequenceExample format.")
+  flags.DEFINE_string(
+      "input_data_pattern", None,
+      "File globs for original model input.")
   flags.DEFINE_string("feature_names", "predictions", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "4716", "Length of the feature vectors.")
@@ -68,6 +71,7 @@ def get_input_evaluation_tensors(reader,
   with tf.name_scope("eval_input"):
     files = gfile.Glob(data_pattern)
     if not files:
+      print data_pattern, files
       raise IOError("Unable to find the evaluation files.")
     logging.info("number of evaluation files: " + str(len(files)))
     files.sort()
@@ -83,6 +87,8 @@ def get_input_evaluation_tensors(reader,
 
 
 def build_graph(all_readers,
+                input_reader,
+                input_data_pattern,
                 model,
                 all_eval_data_patterns,
                 label_loss_fn,
@@ -115,6 +121,15 @@ def build_graph(all_readers,
     if video_id_batch is None:
       video_id_batch = unused_video_id
     model_input_raw_tensors.append(tf.expand_dims(model_input_raw, axis=2))
+
+  original_input = None
+  if input_data_pattern is not None:
+    unused_video_id, original_input, unused_labels_batch, unused_num_frames = (
+        get_input_evaluation_tensors(
+            input_reader,
+            input_data_pattern,
+            batch_size=batch_size))
+  
   model_input = tf.concat(model_input_raw_tensors, axis=2)
   labels_batch = labels_batch_tensor
 
@@ -122,6 +137,7 @@ def build_graph(all_readers,
     result = model.create_model(model_input,
                                 labels=labels_batch,
                                 vocab_size=reader.num_classes,
+                                original_input=original_input,
                                 is_training=False)
     predictions = result["predictions"]
     tf.summary.histogram("model_activations", predictions)
@@ -256,6 +272,14 @@ def evaluate():
           feature_names=feature_names, feature_sizes=feature_sizes)
       all_readers.append(reader)
 
+    input_reader = None
+    input_data_pattern = None
+    if FLAGS.input_data_pattern is not None:
+      input_reader = readers.EnsembleReader(
+          feature_names=["input"], feature_sizes=[1024+128])
+      input_data_pattern = FLAGS.input_data_pattern
+
+    # find the model
     model = find_class_by_name(FLAGS.model, [ensemble_level_models])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
 
@@ -265,6 +289,8 @@ def evaluate():
 
     build_graph(
         all_readers=all_readers,
+        input_reader=input_reader,
+        input_data_pattern=input_data_pattern,
         model=model,
         all_eval_data_patterns=all_patterns,
         label_loss_fn=label_loss_fn,
