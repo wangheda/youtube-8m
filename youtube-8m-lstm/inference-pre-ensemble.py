@@ -34,7 +34,9 @@ import numpy as np
 FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
-  flags.DEFINE_string("model_checkpoint_path", "",
+  flags.DEFINE_string("train_dir", "/tmp/yt8m_model/",
+                      "The directory to load the model files from.")
+  flags.DEFINE_string("model_checkpoint_path", None,
                       "The file path to load the model from.")
   flags.DEFINE_string("output_dir", "",
                       "The file to save the predictions to.")
@@ -106,11 +108,17 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
   with tf.Session() as sess:
     video_id_batch, video_batch, video_label_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
 
-    if model_checkpoint_path:
+    print model_checkpoint_path, FLAGS.train_dir
+    if model_checkpoint_path is None:
+       model_checkpoint_path = tf.train.latest_checkpoint(FLAGS.train_dir)
+
+    print model_checkpoint_path, FLAGS.train_dir
+    if model_checkpoint_path is None:
+      raise Exception("unable to find a checkpoint at location: %s" % model_checkpoint_path)
+    else:
       meta_graph_location = model_checkpoint_path + ".meta"
       logging.info("loading meta-graph: " + meta_graph_location)
-    else:
-      raise Exception("unable to find a checkpoint at location: %s" % model_checkpoint_path)
+
     saver = tf.train.import_meta_graph(meta_graph_location, clear_devices=True)
     logging.info("restoring variables from " + model_checkpoint_path)
     saver.restore(sess, model_checkpoint_path)

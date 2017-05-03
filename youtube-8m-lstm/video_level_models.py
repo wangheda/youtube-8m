@@ -41,6 +41,10 @@ flags.DEFINE_integer(
     "hidden_chain_relu_cells", 256,
     "The number of relu cells used for HiddenChainModel")
 
+flags.DEFINE_integer(
+    "divergence_model_count", 8,
+    "The number of models used in divergence enhancement models")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:

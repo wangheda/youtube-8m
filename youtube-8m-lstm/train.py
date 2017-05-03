@@ -16,6 +16,7 @@
 import json
 import os
 import time
+import numpy
 
 import eval_util
 import losses
@@ -87,8 +88,17 @@ if __name__ == "__main__":
   flags.DEFINE_integer("num_epochs", 5,
                        "How many passes to make over the dataset before "
                        "halting training.")
+  flags.DEFINE_integer("max_steps", None,
+                       "How many steps before stop.")
   flags.DEFINE_float("keep_checkpoint_every_n_hours", 1.0,
-                       "How many hours before saving a new checkpoint")
+                     "How many hours before saving a new checkpoint")
+
+  flags.DEFINE_bool("reweight", False,
+                    "Whether to load model weight from file.")
+  flags.DEFINE_string("sample_vocab_file", "",
+                      "Where to load video_id vocabulary.")
+  flags.DEFINE_string("sample_freq_file", "",
+                      "Where to load sample frequency.")
  
   # Other flags.
   flags.DEFINE_integer("num_readers", 8,
@@ -188,6 +198,20 @@ def find_class_by_name(name, modules):
   modules = [getattr(module, name, None) for module in modules]
   return next(a for a in modules if a)
 
+def get_video_weights(video_id_batch):
+  video_id_to_index = tf.contrib.lookup.string_to_index_table_from_file(
+                          vocabulary_file=FLAGS.sample_vocab_file, default_value=0)
+  indexes = video_id_to_index.lookup(video_id_batch)
+  weight_lines = open(FLAGS.sample_freq_file).readlines()
+  weights = numpy.array(map(float, weight_lines))
+  weights = weights.reshape([len(weight_lines)])
+  weights_tensor = tf.get_variable("sample_weights",
+                               shape=[len(weight_lines)],
+                               trainable=False,
+                               dtype=tf.float32,
+                               initializer=tf.constant_initializer(weights))
+  video_weight_batch = tf.nn.embedding_lookup(weights_tensor, indexes)
+  return video_weight_batch
 
 def build_graph(reader,
                 model,
@@ -239,7 +263,7 @@ def build_graph(reader,
   tf.summary.scalar('learning_rate', learning_rate)
 
   optimizer = optimizer_class(learning_rate)
-  unused_video_id, model_input_raw, labels_batch, num_frames = (
+  video_id, model_input_raw, labels_batch, num_frames = (
       get_input_data_tensors(
           reader,
           train_data_pattern,
@@ -285,16 +309,21 @@ def build_graph(reader,
     for variable in slim.get_model_variables():
       tf.summary.histogram(variable.op.name, variable)
 
+    print "result", result
     predictions = result["predictions"]
     if "loss" in result.keys():
       label_loss = result["loss"]
     else:
+      video_weights_batch = None
+      if FLAGS.reweight:
+        video_weights_batch = get_video_weights(video_id)
       if FLAGS.multitask:
         support_predictions = result["support_predictions"]
         tf.summary.histogram("model/support_predictions", support_predictions)
-        label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch)
+        print "support_predictions", support_predictions
+        label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch)
       else:
-        label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+        label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
 
     tf.summary.histogram("model/predictions", predictions)
     tf.summary.scalar("label_loss", label_loss)
@@ -416,10 +445,12 @@ class Trainer(object):
     logging.info("%s: Starting managed session.", task_as_string(self.task))
     with sv.managed_session(target, config=self.config) as sess:
 
+      steps = 0
       try:
         logging.info("%s: Entering training loop.", task_as_string(self.task))
         while not sv.should_stop():
 
+          steps += 1
           batch_start_time = time.time()
           custom_feed = {}
           if FLAGS.dropout:
@@ -464,6 +495,11 @@ class Trainer(object):
                 utils.MakeSummary("global_step/Examples/Second",
                                   examples_per_second), global_step_val)
             sv.summary_writer.flush()
+
+          if FLAGS.max_steps is not None and steps > FLAGS.max_steps:
+            logging.info("%s: Done training -- max_steps limit reached.",
+                         task_as_string(self.task))
+            break
 
       except tf.errors.OutOfRangeError:
         logging.info("%s: Done training -- epoch limit reached.",
