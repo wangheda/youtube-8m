@@ -39,7 +39,7 @@ if __name__ == "__main__":
       "train_data_patterns", "",
       "Multiple file globs for the training dataset.")
   flags.DEFINE_string(
-      "input_data_pattern", "",
+      "input_data_pattern", None,
       "File globs for original model input.")
   flags.DEFINE_string("feature_names", "predictions", "Name of the feature "
                       "to use for training.")

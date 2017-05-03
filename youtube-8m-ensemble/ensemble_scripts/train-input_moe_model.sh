@@ -15,5 +15,5 @@ CUDA_VISIBLE_DEVICES=1 python train.py \
       --input_data_pattern="$input_data_pattern" \
       --model=InputMoeModel \
       --keep_checkpoint_every_n_hours=0.1 \
-      --batch_size=256 \
+      --batch_size=1024 \
       --num_epochs=5
