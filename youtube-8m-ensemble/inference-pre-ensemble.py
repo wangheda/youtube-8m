@@ -1,3 +1,4 @@
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -10,29 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Binary for evaluating Tensorflow models on the YouTube-8M dataset."""
 
+"""Binary for generating predictions over a set of videos."""
+
+import os
 import time
-
 import numpy
-import eval_util
-import losses
-import ensemble_level_models
-import readers
+import numpy as np
+
 import tensorflow as tf
 from tensorflow import app
 from tensorflow import flags
 from tensorflow import gfile
 from tensorflow import logging
+
 import utils
+import eval_util
+import losses
+import readers
+import ensemble_level_models
 
 FLAGS = flags.FLAGS
 
-if __name__ == "__main__":
-  # Dataset flags.
+if __name__ == '__main__':
   flags.DEFINE_string("model_checkpoint_path", None,
-                      "The file to load the model files from. ")
-  flags.DEFINE_string("output_file", "",
+                      "The file path to load the model from.")
+  flags.DEFINE_string("output_dir", "",
                       "The file to save the predictions to.")
   flags.DEFINE_string(
       "input_data_patterns", "",
@@ -43,33 +47,19 @@ if __name__ == "__main__":
 
   # Model flags.
   flags.DEFINE_string(
-      "model", "MatrixRegressionModel",
+      "model", "MeanModel",
       "Which architecture to use for the model.")
   flags.DEFINE_integer("batch_size", 256,
                        "How many examples to process per batch.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Loss computed on validation data")
-
-  # Other flags.
-  flags.DEFINE_boolean("run_once", True, "Whether to run eval only once.")
-  flags.DEFINE_integer("top_k", 20, "How many predictions to output per video.")
-
-def format_lines(video_ids, predictions, top_k):
-  batch_size = len(video_ids)
-  for video_index in range(batch_size):
-    top_indices = numpy.argpartition(predictions[video_index], -top_k)[-top_k:]
-    line = [(class_index, predictions[video_index][class_index])
-            for class_index in top_indices]
-    line = sorted(line, key=lambda p: -p[1])
-    yield video_ids[video_index].decode('utf-8') + "," + " ".join("%i %f" % pair
-                                                  for pair in line) + "\n"
-
+  flags.DEFINE_integer("file_size", 4096,
+                       "Number of frames per batch for DBoF.")
 
 def find_class_by_name(name, modules):
   """Searches the provided modules for the named class and returns it."""
   modules = [getattr(module, name, None) for module in modules]
   return next(a for a in modules if a)
-
 
 def get_input_data_tensors(reader,
                                  data_pattern,
@@ -87,10 +77,9 @@ def get_input_data_tensors(reader,
     return tf.train.batch(
         eval_data,
         batch_size=batch_size,
-        capacity=3 * batch_size,
+        capacity=4 * batch_size,
         allow_smaller_final_batch=True,
         enqueue_many=True)
-
 
 def build_graph(all_readers,
                 model,
@@ -146,12 +135,10 @@ def build_graph(all_readers,
   tf.add_to_collection("video_id_batch", video_id_batch)
   tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
 
-
-def inference_loop(video_id_batch, prediction_batch, label_batch, loss,
-              saver, out_file_location):
-
-  top_k = FLAGS.top_k
-  with tf.Session() as sess, gfile.Open(out_file_location, "w+") as out_file:
+def inference_loop(video_id_batch, prediction_batch,
+                   label_batch, saver,
+                   output_dir, batch_size):
+  with tf.Session() as sess:
     checkpoint = FLAGS.model_checkpoint_path
     if checkpoint:
       logging.info("Loading checkpoint for eval: " + checkpoint)
@@ -164,8 +151,23 @@ def inference_loop(video_id_batch, prediction_batch, label_batch, loss,
     sess.run([tf.local_variables_initializer()])
 
     # Start the queue runners.
-    fetches = [video_id_batch, prediction_batch]
+    fetches = [video_id_batch, prediction_batch, label_batch]
     coord = tf.train.Coordinator()
+    start_time = time.time()
+
+    video_ids = []
+    video_labels = []
+    video_features = []
+    filenum = 0
+    num_examples_processed = 0
+    total_num_examples_processed = 0
+
+    directory = FLAGS.output_dir
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    else:
+        raise IOError("Output path exists! path='" + directory + "'")
+
     try:
       threads = []
       for qr in tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS):
@@ -175,42 +177,92 @@ def inference_loop(video_id_batch, prediction_batch, label_batch, loss,
       logging.info("enter eval_once loop global_step_val = %s. ",
                    global_step_val)
 
-      num_examples_processed = 0
-      start_time = time.time()
-      out_file.write("VideoId,LabelConfidencePairs\n")
-
       while not coord.should_stop():
-        batch_start_time = time.time()
+        ids_val, predictions_val, labels_val = None, None, None
 
-        video_id_val, predictions_val = sess.run(fetches)
+        ids_val, predictions_val, labels_val = sess.run(fetches)
 
-        now = time.time()
-        num_examples_processed += len(video_id_val)
-        logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
-        for line in format_lines(video_id_val, predictions_val, top_k):
-          out_file.write(line)
-        out_file.flush()
+        video_ids.append(ids_val)
+        video_labels.append(labels_val)
+        video_features.append(predictions_val)
+        num_examples_processed += len(ids_val)
+
+        ids_val, predictions_val, labels_val = None, None, None
+
+        if num_examples_processed >= FLAGS.file_size:
+          assert num_examples_processed==FLAGS.file_size, "num_examples_processed should be equal to %d"%FLAGS.file_size
+          video_ids = np.concatenate(video_ids, axis=0)
+          video_labels = np.concatenate(video_labels, axis=0)
+          video_features = np.concatenate(video_features, axis=0)
+          write_to_record(video_ids, video_labels, video_features, filenum, num_examples_processed)
+
+          video_ids = []
+          video_labels = []
+          video_features = []
+          filenum += 1
+          total_num_examples_processed += num_examples_processed
+
+          now = time.time()
+          logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
+          num_examples_processed = 0
 
     except tf.errors.OutOfRangeError as e:
-      logging.info('Done with inference. The output file was written to ' + out_file_location)
+      if ids_val is not None:
+        video_ids.append(ids_val)
+        video_labels.append(labels_val)
+        video_features.append(predictions_val)
+        num_examples_processed += len(ids_val)
+
+      if 0 < num_examples_processed <= FLAGS.file_size:
+        video_ids = np.concatenate(video_ids, axis=0)
+        video_labels = np.concatenate(video_labels, axis=0)
+        video_features = np.concatenate(video_features, axis=0)
+        write_to_record(video_ids, video_labels, video_features, filenum, num_examples_processed)
+        total_num_examples_processed += num_examples_processed
+
+        now = time.time()
+        logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
+        num_examples_processed = 0
+
+      logging.info("Done with inference. %d samples was written to %s" % (total_num_examples_processed, FLAGS.output_dir))
     except Exception as e:  # pylint: disable=broad-except
       logging.info("Unexpected exception: " + str(e))
-      coord.request_stop(e)
+    finally:
+      coord.request_stop()
 
-    coord.request_stop()
     coord.join(threads, stop_grace_period_secs=10)
 
 
-def inference():
-  tf.set_random_seed(0)  # for reproducibility
+def write_to_record(video_ids, video_labels, video_features, filenum, num_examples_processed):
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%03d.tfrecord' % filenum)
+    for i in range(num_examples_processed):
+        video_id = video_ids[i]
+        video_label = np.nonzero(video_labels[i,:])[0]
+        example = get_output_feature(video_id, video_label, [video_features[i,:]], ['predictions'])
+        serialized = example.SerializeToString()
+        writer.write(serialized)
+    writer.close()
+
+def get_output_feature(video_id, video_label, video_feature, feature_names):
+    feature_maps = {'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[video_id])),
+                    'labels': tf.train.Feature(int64_list=tf.train.Int64List(value=video_label))}
+    for feature_index in range(len(feature_names)):
+        feature_maps[feature_names[feature_index]] = tf.train.Feature(
+            float_list=tf.train.FloatList(value=video_feature[feature_index]))
+    example = tf.train.Example(features=tf.train.Features(feature=feature_maps))
+    return example
+
+def main(unused_argv):
+  logging.set_verbosity(tf.logging.INFO)
+
   with tf.Graph().as_default():
     # convert feature_names and feature_sizes to lists of values
     feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
         FLAGS.feature_names, FLAGS.feature_sizes)
-
+  
     # prepare a reader for each single model prediction result
     all_readers = []
-
+  
     all_patterns = FLAGS.input_data_patterns
     all_patterns = map(lambda x: x.strip(), all_patterns.strip().strip(",").split(","))
     for i in xrange(len(all_patterns)):
@@ -235,20 +287,12 @@ def inference():
     video_id_batch = tf.get_collection("video_id_batch")[0]
     prediction_batch = tf.get_collection("predictions")[0]
     label_batch = tf.get_collection("labels")[0]
-    loss = tf.get_collection("loss")[0]
 
     saver = tf.train.Saver(tf.global_variables())
 
     inference_loop(video_id_batch, prediction_batch,
-                   label_batch, loss,
-                   saver, FLAGS.output_file)
-
-def main(unused_argv):
-  logging.set_verbosity(tf.logging.INFO)
-  print("tensorflow version: %s" % tf.__version__)
-  inference()
-
-
+                   label_batch, saver, 
+                   FLAGS.output_dir, FLAGS.batch_size)
+  
 if __name__ == "__main__":
   app.run()
-
