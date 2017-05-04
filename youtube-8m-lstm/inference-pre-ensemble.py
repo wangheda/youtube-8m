@@ -169,12 +169,12 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
           video_features.append(predictions)
           video_inputs.append(video_batch_val)
 
-          if num_examples_processed>=FLAGS.file_size:
+          if num_examples_processed >= FLAGS.file_size:
             assert num_examples_processed==FLAGS.file_size, "num_examples_processed should be equal to file_size"
-            video_id = np.concatenate(video_id,axis=0)
-            video_label = np.concatenate(video_label,axis=0)
-            video_inputs = np.concatenate(video_inputs,axis=0)
-            video_features = np.concatenate(video_features,axis=0)
+            video_id = np.concatenate(video_id, axis=0)
+            video_label = np.concatenate(video_label, axis=0)
+            video_inputs = np.concatenate(video_inputs, axis=0)
+            video_features = np.concatenate(video_features, axis=0)
             write_to_record(video_id, video_label, video_inputs, video_features, filenum, num_examples_processed)
             filenum += 1
             video_id = []
@@ -190,7 +190,7 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
         logging.info('Done with inference. The output file was written to ' + out_file_location)
     finally:
         coord.request_stop()
-        if num_examples_processed<FLAGS.file_size:
+        if 0 < num_examples_processed <= FLAGS.file_size:
             video_id = np.concatenate(video_id,axis=0)
             video_label = np.concatenate(video_label,axis=0)
             video_inputs = np.concatenate(video_inputs,axis=0)
