@@ -3,7 +3,7 @@
 # base_model or sub_model_1 or sub_model_2 or so on
 model_type="$1"
 
-model_name="lstmparalleloutput_bagging"
+model_name="cnn_deep_combine_chain_bagging"
 MODEL_DIR="../model/${model_name}"
 
 vocab_file="resources/train.video_id.vocab"
@@ -16,7 +16,10 @@ if [ ! -f $vocab_file ]; then
   cat train_labels.csv | cut -d ',' -f 1 >> train.video_id.vocab
   cd ..
 fi
-cat $vocab_file | awk '{print 1}' > $default_freq_file
+
+if [ ! -f $default_freq_file ]; then
+  cat $vocab_file | awk '{print 1}' > $default_freq_file
+fi 
 
 if [ $model_type == "base_model" ]; then
 
@@ -24,8 +27,8 @@ if [ $model_type == "base_model" ]; then
   rm ${MODEL_DIR}/ensemble.conf
   base_model_dir="${MODEL_DIR}/base_model"
   mkdir -p $base_model_dir
-  for j in {1..3}; do 
-    CUDA_VISIBLE_DEVICES=1 python train.py \
+  for j in {1..2}; do 
+    CUDA_VISIBLE_DEVICES=0 python train.py \
       --train_dir="$base_model_dir" \
       --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
       --frame_features=True \
@@ -34,14 +37,18 @@ if [ $model_type == "base_model" ]; then
       --reweight=True \
       --sample_vocab_file="$vocab_file" \
       --sample_freq_file="$default_freq_file" \
-      --model=LstmParallelFinaloutputModel \
-      --lstm_cells="1024,128" \
-      --moe_num_mixtures=8 \
-      --rnn_swap_memory=True \
+      --model=CnnDeepCombineChainModel \
+      --moe_num_mixtures=4 \
+      --deep_chain_layers=4 \
+      --deep_chain_relu_cells=128 \
+      --label_loss=MultiTaskCrossEntropyLoss \
+      --multitask=True \
+      --support_type="label,label,label,label" \
+      --support_loss_percent=0.05 \
+      --batch_size=128 \
       --base_learning_rate=0.001 \
       --num_readers=2 \
-      --num_epochs=1 \
-      --batch_size=128 \
+      --num_epochs=2 \
       --keep_checkpoint_every_n_hour=72.0 
   done
 
@@ -57,24 +64,28 @@ elif [[ $model_type =~ "^sub_model" ]]; then
       --output_freq_file="${sub_model_dir}/train.video_id.freq"
 
   # train N models with re-weighted samples
-  CUDA_VISIBLE_DEVICES=1 python train.py \
-    --train_dir="$sub_model_dir" \
-    --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
-    --frame_features=True \
-    --feature_names="rgb,audio" \
-    --feature_sizes="1024,128" \
-    --reweight=True \
-    --sample_vocab_file="resources/train.video_id.vocab" \
-    --sample_freq_file="${sub_model_dir}/train.video_id.freq" \
-    --model=LstmParallelFinaloutputModel \
-    --lstm_cells="1024,128" \
-    --moe_num_mixtures=8 \
-    --rnn_swap_memory=True \
-    --base_learning_rate=0.001 \
-    --num_readers=2 \
-    --num_epochs=1 \
-    --batch_size=128 \
-    --keep_checkpoint_every_n_hour=72.0 
+  CUDA_VISIBLE_DEVICES=0 python train.py \
+      --train_dir="$base_model_dir" \
+      --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
+      --frame_features=True \
+      --feature_names="rgb,audio" \
+      --feature_sizes="1024,128" \
+      --reweight=True \
+      --sample_vocab_file="$vocab_file" \
+      --sample_freq_file="$default_freq_file" \
+      --model=CnnDeepCombineChainModel \
+      --moe_num_mixtures=4 \
+      --deep_chain_layers=4 \
+      --deep_chain_relu_cells=128 \
+      --label_loss=MultiTaskCrossEntropyLoss \
+      --multitask=True \
+      --support_type="label,label,label,label" \
+      --support_loss_percent=0.05 \
+      --batch_size=128 \
+      --base_learning_rate=0.001 \
+      --num_readers=2 \
+      --num_epochs=2 \
+      --keep_checkpoint_every_n_hour=72.0 
 
   # inference-pre-ensemble
   for part in test ensemble_validate ensemble_train; do
