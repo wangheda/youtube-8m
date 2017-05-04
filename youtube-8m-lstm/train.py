@@ -204,15 +204,13 @@ def get_video_weights_array():
   weights = weights.reshape([len(weight_lines)])
   return weights, len(weight_lines)
 
-def optional_assign_weights(sess):
-  weights, length = get_video_weights_array()
-  if len(tf.get_collection("weights_input")) > 0:
-    weights_input = tf.get_collection("weights_input")[0]
-    weights_assignment = tf.get_collection("weights_assignment")[0]
+def optional_assign_weights(sess, weights_input, weights_assignment):
+  if weights_input is not None:
+    weights, length = get_video_weights_array()
     _ = sess.run(weights_assignment, feed_dict={weights_input: weights})
     print "Assigned weights from %s" % FLAGS.sample_freq_file
   else:
-    print "Tensor weights_input not found"
+    print "Collection weights_input not found"
 
 def get_video_weights(video_id_batch):
   video_id_to_index = tf.contrib.lookup.string_to_index_table_from_file(
@@ -451,6 +449,11 @@ class Trainer(object):
           keep_prob_tensor = tf.get_collection("keep_prob")[0]
         if FLAGS.noise_level > 0:
           noise_level_tensor = tf.get_collection("noise_level")[0]
+        if FLAGS.reweight:
+          weights_input, weights_assignment = None, None
+          if len(tf.get_collection("weights_input")) > 0:
+            weights_input = tf.get_collection("weights_input")[0]
+            weights_assignment = tf.get_collection("weights_assignment")[0]
 
     sv = tf.train.Supervisor(
         graph,
@@ -466,7 +469,8 @@ class Trainer(object):
     with sv.managed_session(target, config=self.config) as sess:
 
       # re-assign weights
-      optional_assign_weights(sess)
+      if FLAGS.reweight:
+        optional_assign_weights(sess, weights_input, weights_assignment)
 
       steps = 0
       try:
