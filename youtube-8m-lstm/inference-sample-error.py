@@ -77,7 +77,7 @@ def format_lines(video_ids, predictions, labels):
     # error rate
     top_k = max(int(numpy.sum(labels[video_index])), 1)
     top_indices = numpy.argpartition(predictions[video_index], -top_k)[-top_k:]
-    positives = [predictions[video_index][class_index] for class_index in top_indices]
+    positives = [labels[video_index][class_index] for class_index in top_indices]
     perr = sum(positives) / float(top_k)
     yield video_ids[video_index].decode('utf-8') + "\t" + str(1-perr)
 
