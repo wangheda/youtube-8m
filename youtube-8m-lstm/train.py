@@ -198,18 +198,38 @@ def find_class_by_name(name, modules):
   modules = [getattr(module, name, None) for module in modules]
   return next(a for a in modules if a)
 
+def get_video_weights_array():
+  weight_lines = open(FLAGS.sample_freq_file).readlines()
+  weights = numpy.array(map(float, weight_lines))
+  weights = weights.reshape([len(weight_lines)])
+  return weights, len(weight_lines)
+
+def optional_assign_weights(sess):
+  weights, length = get_video_weights_array()
+  if len(tf.get_collection("weights_input")) > 0:
+    weights_input = tf.get_collection("weights_input")[0]
+    weights_assignment = tf.get_collection("weights_assignment")[0]
+    _ = sess.run(weights_assignment, feed_dict={weights_input: weights})
+    print "Assigned weights from %s" % FLAGS.sample_freq_file
+  else:
+    print "Tensor weights_input not found"
+
 def get_video_weights(video_id_batch):
   video_id_to_index = tf.contrib.lookup.string_to_index_table_from_file(
                           vocabulary_file=FLAGS.sample_vocab_file, default_value=0)
   indexes = video_id_to_index.lookup(video_id_batch)
-  weight_lines = open(FLAGS.sample_freq_file).readlines()
-  weights = numpy.array(map(float, weight_lines))
-  weights = weights.reshape([len(weight_lines)])
+  weights, length = get_video_weights_array()
+  weights_input = tf.placeholder(tf.float32, shape=[length], name="sample_weights_input")
   weights_tensor = tf.get_variable("sample_weights",
-                               shape=[len(weight_lines)],
+                               shape=[length],
                                trainable=False,
                                dtype=tf.float32,
                                initializer=tf.constant_initializer(weights))
+  weights_assignment = tf.assign(weights_tensor, weights_input)
+
+  tf.add_to_collection("weights_input", weights_input)
+  tf.add_to_collection("weights_assignment", weights_assignment)
+
   video_weight_batch = tf.nn.embedding_lookup(weights_tensor, indexes)
   return video_weight_batch
 
@@ -444,6 +464,9 @@ class Trainer(object):
 
     logging.info("%s: Starting managed session.", task_as_string(self.task))
     with sv.managed_session(target, config=self.config) as sess:
+
+      # re-assign weights
+      optional_assign_weights(sess)
 
       steps = 0
       try:
