@@ -1,0 +1,12 @@
+CUDA_VISIBLE_DEVICES=0 python train.py --train_dir="../model/progressiveattlstm1024_layer2_moe8/" \
+					 --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
+					 --frame_features=True \
+					 --feature_names="rgb,audio" \
+					 --feature_sizes="1024,128" \
+					 --batch_size=128 \
+					 --moe_num_mixtures=4 \
+					 --lstm_layers=1 \
+					 --lstm_cells=1024 \
+					 --rnn_wrap_memory=True \
+					 --base_learning_rate=0.0004 \
+					 --model=ProgressiveAttentionLstmModel
