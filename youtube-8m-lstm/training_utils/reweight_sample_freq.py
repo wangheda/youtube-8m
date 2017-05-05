@@ -1,4 +1,5 @@
 import random
+import math
 from datetime import datetime
 import tensorflow as tf
 from tensorflow import flags
