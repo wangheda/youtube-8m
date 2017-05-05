@@ -10,7 +10,8 @@ echo "$test_data_patterns"
 
 #CUDA_VISIBLE_DEVICES=0 python inference.py \
 python inference.py \
-      --model_checkpoint_path="../model/${model}/model.ckpt-1180" \
+      --model_checkpoint_path="../model/${model}/model.ckpt-1204" \
       --output_file="../model/${model}/predictions.${model}.csv" \
       --model="MatrixRegressionModel" \
+      --batch_size=1024 \
       --input_data_patterns="$test_data_patterns"

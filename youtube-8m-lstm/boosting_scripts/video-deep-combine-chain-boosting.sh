@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # base_model or sub_model_1 or sub_model_2 or so on
-model_type="$1"
+#model_type="$1"
 
 model_name="video_dcc_boosting"
 MODEL_DIR="../model/${model_name}"
@@ -9,6 +9,7 @@ MODEL_DIR="../model/${model_name}"
 vocab_file="resources/train.video_id.vocab"
 default_freq_file="resources/train.video_id.freq"
 
+rm ${MODEL_DIR}/ensemble.conf
 if [ ! -f $vocab_file ]; then
   cd resources
   wget http://us.data.yt8m.org/1/ground_truth_labels/train_labels.csv
@@ -17,7 +18,6 @@ if [ ! -f $vocab_file ]; then
   cd ..
 fi
 cat $vocab_file | awk '{print 1}' > $default_freq_file
-rm ${MODEL_DIR}/ensemble.conf
 
 # base model (4 epochs)
 base_model_dir="${MODEL_DIR}/base_model"
@@ -39,7 +39,7 @@ for j in {1..2}; do
     --num_supports=18864 \
     --support_loss_percent=0.05 \
     --reweight=True \
-    --sample_vocab_file="resources/train.video_id.vocab" \
+    --sample_vocab_file="$vocab_file" \
     --sample_freq_file="$default_freq_file" \
     --keep_checkpoint_every_n_hour=8.0 \
     --base_learning_rate=0.01 \
@@ -74,7 +74,7 @@ for i in {1..8}; do
     --num_supports=18864 \
     --support_loss_percent=0.05 \
     --reweight=True \
-    --sample_vocab_file="resources/train.video_id.vocab" \
+    --sample_vocab_file="$vocab_file" \
     --sample_freq_file="$last_freq_file" \
     --keep_checkpoint_every_n_hour=8.0 \
     --base_learning_rate=0.01 \
@@ -119,8 +119,8 @@ for i in {1..8}; do
   echo "${model_name}/sub_model_$i" >> ${MODEL_DIR}/ensemble.conf
 done
 
-#cd ../youtube-8m-ensemble
-#bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
-#bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+cd ../youtube-8m-ensemble
+bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 #bash ensemble_scripts/infer-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 
