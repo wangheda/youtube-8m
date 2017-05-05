@@ -27,7 +27,8 @@ if [ $model_type == "base_model" ]; then
   rm ${MODEL_DIR}/ensemble.conf
   base_model_dir="${MODEL_DIR}/base_model"
   mkdir -p $base_model_dir
-  for j in {1..2}; do 
+#  for j in 1 2; do 
+  for j in 2; do 
     CUDA_VISIBLE_DEVICES=0 python train.py \
       --train_dir="$base_model_dir" \
       --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
