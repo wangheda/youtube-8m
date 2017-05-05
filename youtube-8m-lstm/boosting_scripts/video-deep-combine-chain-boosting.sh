@@ -17,10 +17,22 @@ if [ ! -f $vocab_file ]; then
   cat train_labels.csv | cut -d ',' -f 1 >> train.video_id.vocab
   cd ..
 fi
-cat $vocab_file | awk '{print 1}' > $default_freq_file
+
+vocab_checksum=$(md5sum $vocab_file | cut -d ' ' -f 1)
+if [ "$vocab_checksum" == "b74b8f2592cad5dd21bf614d1438db98" ]; then
+  echo $vocab_file is valid
+else
+  echo $vocab_file is corrupted
+  exit 1
+fi
+
+if [ ! -f $default_freq_file ]; then
+  cat $vocab_file | awk '{print 1}' > $default_freq_file
+fi
+
+base_model_dir="${MODEL_DIR}/base_model"
 
 # base model (4 epochs)
-base_model_dir="${MODEL_DIR}/base_model"
 mkdir -p $base_model_dir
 for j in {1..2}; do 
   CUDA_VISIBLE_DEVICES=0 python train.py \
@@ -42,6 +54,7 @@ for j in {1..2}; do
     --sample_vocab_file="$vocab_file" \
     --sample_freq_file="$default_freq_file" \
     --keep_checkpoint_every_n_hour=8.0 \
+    --keep_checkpoint_interval=6 \
     --base_learning_rate=0.01 \
     --data_augmenter=NoiseAugmenter \
     --input_noise_level=0.2 \

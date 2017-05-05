@@ -17,18 +17,27 @@ if [ ! -f $vocab_file ]; then
   cd ..
 fi
 
+vocab_checksum=$(md5sum $vocab_file | cut -d ' ' -f 1)
+if [ "$vocab_checksum" == "b74b8f2592cad5dd21bf614d1438db98" ]; then
+  echo $vocab_file is valid
+else
+  echo $vocab_file is corrupted
+  exit 1
+fi
+
 if [ ! -f $default_freq_file ]; then
   cat $vocab_file | awk '{print 1}' > $default_freq_file
-fi 
+fi
+
+base_model_dir="${MODEL_DIR}/base_model"
 
 if [ $model_type == "base_model" ]; then
 
   # base model
   rm ${MODEL_DIR}/ensemble.conf
-  base_model_dir="${MODEL_DIR}/base_model"
   mkdir -p $base_model_dir
-#  for j in 1 2; do 
-  for j in 2; do 
+
+  for j in 1 2; do 
     CUDA_VISIBLE_DEVICES=0 python train.py \
       --train_dir="$base_model_dir" \
       --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
@@ -53,7 +62,7 @@ if [ $model_type == "base_model" ]; then
       --keep_checkpoint_every_n_hour=72.0 
   done
 
-elif [[ $model_type =~ "^sub_model" ]]; then
+elif [[ $model_type =~ ^sub_model ]]; then
 
   # sub model
   sub_model_dir="${MODEL_DIR}/${model_type}"

@@ -16,13 +16,25 @@ if [ ! -f $vocab_file ]; then
   cat train_labels.csv | cut -d ',' -f 1 >> train.video_id.vocab
   cd ..
 fi
-cat $vocab_file | awk '{print 1}' > $default_freq_file
+
+vocab_checksum=$(md5sum $vocab_file | cut -d ' ' -f 1)
+if [ "$vocab_checksum" == "b74b8f2592cad5dd21bf614d1438db98" ]; then
+  echo $vocab_file is valid
+else
+  echo $vocab_file is corrupted
+  exit 1
+fi
+
+if [ ! -f $default_freq_file ]; then
+  cat $vocab_file | awk '{print 1}' > $default_freq_file
+fi
+
+base_model_dir="${MODEL_DIR}/base_model"
 
 if [ $model_type == "base_model" ]; then
 
   # base model
   rm ${MODEL_DIR}/ensemble.conf
-  base_model_dir="${MODEL_DIR}/base_model"
   mkdir -p $base_model_dir
 
   CUDA_VISIBLE_DEVICES=1 python train.py \
@@ -44,7 +56,7 @@ if [ $model_type == "base_model" ]; then
     --batch_size=128 \
     --keep_checkpoint_every_n_hour=72.0 
 
-elif [[ $model_type =~ "^sub_model" ]]; then
+elif [[ $model_type =~ ^sub_model ]]; then
 
   # sub model
   sub_model_dir="${MODEL_DIR}/${model_type}"

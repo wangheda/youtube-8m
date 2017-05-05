@@ -92,6 +92,8 @@ if __name__ == "__main__":
                        "How many steps before stop.")
   flags.DEFINE_float("keep_checkpoint_every_n_hours", 1.0,
                      "How many hours before saving a new checkpoint")
+  flags.DEFINE_integer("keep_checkpoint_interval", 15,
+                     "How many minutes before saving a new checkpoint")
 
   flags.DEFINE_bool("reweight", False,
                     "Whether to load model weight from file.")
@@ -461,7 +463,7 @@ class Trainer(object):
         init_op=init_op,
         is_chief=self.is_master,
         global_step=global_step,
-        save_model_secs=6 * 60,
+        save_model_secs=FLAGS.keep_checkpoint_interval * 60,
         save_summaries_secs=120,
         saver=saver)
 

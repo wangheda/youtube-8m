@@ -13,6 +13,18 @@ if [ ! -f $vocab_file ]; then
   cd ..
 fi
 
+vocab_checksum=$(md5sum $vocab_file | cut -d ' ' -f 1)
+if [ "$vocab_checksum" == "b74b8f2592cad5dd21bf614d1438db98" ]; then
+  echo $vocab_file is valid
+else
+  echo $vocab_file is corrupted
+  exit 1
+fi
+
+if [ ! -f $default_freq_file ]; then
+  cat $vocab_file | awk '{print 1}' > $default_freq_file
+fi
+
 for i in {1..8}; do
   sub_model_dir="${MODEL_DIR}/sub_model_${i}"
   mkdir -p $sub_model_dir
