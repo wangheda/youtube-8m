@@ -564,7 +564,7 @@ class Trainer(object):
           " when starting a new model. Please delete it manually and" +
           " try again.", task_as_string(self.task))
 
-  def get_latest_chechpoint(self, start_new_model, train_dir):
+  def get_latest_checkpoint(self, start_new_model, train_dir):
     if start_new_model:
       logging.info("%s: Flag 'start_new_model' is set. Building a new model.",
                    task_as_string(self.task))
