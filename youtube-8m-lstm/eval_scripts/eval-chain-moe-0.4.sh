@@ -2,7 +2,7 @@
 GPU_ID="1"
 EVERY=500
 MODEL=ChainMoeModel
-MODEL_DIR="../model/video_chain_moe16_ce"
+MODEL_DIR="../model/video_chain_moe16_ce_0.4"
 
 start=$1
 DIR="$(pwd)"

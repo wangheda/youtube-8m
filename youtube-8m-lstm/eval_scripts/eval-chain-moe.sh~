@@ -1,14 +1,10 @@
 
-GPU_ID="1"
-EVERY=500
-MODEL=ChainMoeModel
-MODEL_DIR="../model/video_chain_moe16_ce"
-
 start=$1
-DIR="$(pwd)"
+GPU_ID=1
+MODEL=ChainMoeModel
+MODEL_DIR="../model/video_chain_moe16_sm"
 
-for checkpoint in $(cd $MODEL_DIR && python ${DIR}/training_utils/select.py $EVERY); do
-	echo $checkpoint;
+for checkpoint in $(for filename in $MODEL_DIR/model.ckpt-*.meta; do echo $filename | grep -o "ckpt-[0123456789]*.meta" | cut -d '-' -f 2 | cut -d '.' -f 1; done | sort -n); do
 	if [ $checkpoint -gt $start ]; then
 		echo $checkpoint;
 		CUDA_VISIBLE_DEVICES=$GPU_ID python eval.py \
