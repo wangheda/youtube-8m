@@ -187,7 +187,7 @@ def get_input_data_tensors(reader,
     return tf.train.shuffle_batch_join(
         training_data,
         batch_size=batch_size,
-        capacity=FLAGS.batch_size * 5,
+        capacity=FLAGS.batch_size * 10,
         min_after_dequeue=FLAGS.batch_size,
         allow_smaller_final_batch=True,
         enqueue_many=True)
@@ -461,7 +461,7 @@ class Trainer(object):
         init_op=init_op,
         is_chief=self.is_master,
         global_step=global_step,
-        save_model_secs=15 * 60,
+        save_model_secs=6 * 60,
         save_summaries_secs=120,
         saver=saver)
 
