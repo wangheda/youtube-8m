@@ -1,5 +1,5 @@
 CUDA_VISIBLE_DEVICES=0 python train.py \
-        --train_dir="../model/video_chain_moe16_deep_combine/" \
+        --train_dir="../model/video_chain_moe16_deep_combine_elu/" \
         --frame_features=False \
         --feature_names="mean_rgb,mean_audio" \
         --feature_sizes="1024,128" \
@@ -15,5 +15,6 @@ CUDA_VISIBLE_DEVICES=0 python train.py \
         --num_readers=4 \
         --deep_chain_layers=4 \
         --deep_chain_relu_cells=256 \
+        --deep_chain_relu_type=elu \
         --base_learning_rate=0.01
 
