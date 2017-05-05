@@ -24,26 +24,25 @@ if [ $model_type == "base_model" ]; then
   rm ${MODEL_DIR}/ensemble.conf
   base_model_dir="${MODEL_DIR}/base_model"
   mkdir -p $base_model_dir
-  for j in {1..3}; do 
-    CUDA_VISIBLE_DEVICES=1 python train.py \
-      --train_dir="$base_model_dir" \
-      --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
-      --frame_features=True \
-      --feature_names="rgb,audio" \
-      --feature_sizes="1024,128" \
-      --reweight=True \
-      --sample_vocab_file="$vocab_file" \
-      --sample_freq_file="$default_freq_file" \
-      --model=LstmParallelFinaloutputModel \
-      --lstm_cells="1024,128" \
-      --moe_num_mixtures=8 \
-      --rnn_swap_memory=True \
-      --base_learning_rate=0.001 \
-      --num_readers=2 \
-      --num_epochs=1 \
-      --batch_size=128 \
-      --keep_checkpoint_every_n_hour=72.0 
-  done
+
+  CUDA_VISIBLE_DEVICES=1 python train.py \
+    --train_dir="$base_model_dir" \
+    --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
+    --frame_features=True \
+    --feature_names="rgb,audio" \
+    --feature_sizes="1024,128" \
+    --reweight=True \
+    --sample_vocab_file="$vocab_file" \
+    --sample_freq_file="$default_freq_file" \
+    --model=LstmParallelFinaloutputModel \
+    --lstm_cells="1024,128" \
+    --moe_num_mixtures=8 \
+    --rnn_swap_memory=True \
+    --base_learning_rate=0.001 \
+    --num_readers=2 \
+    --num_epochs=3 \
+    --batch_size=128 \
+    --keep_checkpoint_every_n_hour=72.0 
 
 elif [[ $model_type =~ "^sub_model" ]]; then
 
@@ -57,7 +56,7 @@ elif [[ $model_type =~ "^sub_model" ]]; then
       --output_freq_file="${sub_model_dir}/train.video_id.freq"
 
   # train N models with re-weighted samples
-  CUDA_VISIBLE_DEVICES=1 python train.py \
+  CUDA_VISIBLE_DEVICES=1 python train-with-rebuild.py \
     --train_dir="$sub_model_dir" \
     --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
     --frame_features=True \
