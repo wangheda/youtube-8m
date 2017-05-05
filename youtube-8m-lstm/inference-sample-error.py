@@ -79,7 +79,7 @@ def format_lines(video_ids, predictions, labels):
     top_indices = numpy.argpartition(predictions[video_index], -top_k)[-top_k:]
     positives = [labels[video_index][class_index] for class_index in top_indices]
     perr = sum(positives) / float(top_k)
-    yield video_ids[video_index].decode('utf-8') + "\t" + str(1-perr)
+    yield video_ids[video_index].decode('utf-8') + "\t" + str(1-perr) + "\n"
 
 def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
   """Creates the section of the graph which reads the input data.

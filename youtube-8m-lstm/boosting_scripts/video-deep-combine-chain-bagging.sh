@@ -54,7 +54,7 @@ last_freq_file=$default_freq_file
 
 for i in {1..8}; do
   sub_model_dir="${MODEL_DIR}/sub_model_${i}"
-  mkdir -p $sub_model_dir
+  cp -r $base_model_dir $sub_model_dir
 
   echo "training model #$i, reweighting with $last_freq_file"
   # train N models with re-weighted samples
@@ -76,7 +76,7 @@ for i in {1..8}; do
     --reweight=True \
     --sample_vocab_file="resources/train.video_id.vocab" \
     --sample_freq_file="$last_freq_file" \
-    --keep_checkpoint_every_n_hour=0.25 \
+    --keep_checkpoint_every_n_hour=8.0 \
     --base_learning_rate=0.01 \
     --data_augmenter=NoiseAugmenter \
     --input_noise_level=0.2 \
