@@ -3,7 +3,7 @@
 # base_model or sub_model_1 or sub_model_2 or so on
 #model_type="$1"
 
-model_name="video_dcc_boosting"
+model_name="video_dcc_boosting_weightclip"
 MODEL_DIR="../model/${model_name}"
 
 vocab_file="resources/train.video_id.vocab"
@@ -122,6 +122,7 @@ for i in {1..8}; do
 
   # generate resample freq file
   python training_utils/reweight_sample_freq.py \
+      --clip_weight=5.0 \
       --video_id_file="$vocab_file" \
       --input_freq_file="$last_freq_file" \
       --input_error_file="${sub_model_dir}/train.video_id.error" \
@@ -133,6 +134,14 @@ for i in {1..8}; do
 done
 
 cd ../youtube-8m-ensemble
+# partly ensemble
+for i in 1 2 4; do 
+  part_conf="${MODEL_DIR}/ensemble${i}.conf"
+  cat ${MODEL_DIR}/ensemble.conf | head -n $i > $part_conf
+  bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble${i}_matrix_model $part_conf
+  bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble${i}_matrix_model $part_conf
+done
+# all ensemble
 bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 #bash ensemble_scripts/infer-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf

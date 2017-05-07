@@ -68,7 +68,7 @@ if __name__=="__main__":
       freq_dict[video_id] += random.random() * 2 * avg_pool
 
   # make the average value 1.0
-  freq_rel_ratio = sum(freq_dict.values()) / len(freq_dict)
+  freq_rel_ratio = max(sum(freq_dict.values()) / len(freq_dict), 1e-6)
   for video_id in word_list:
     freq_dict[video_id] /= freq_rel_ratio
 
