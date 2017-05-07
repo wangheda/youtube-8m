@@ -72,16 +72,18 @@ class LstmAttentionCombineModel(models.BaseModel):
         rnn_out = tf.einsum('aij,ajk->aik', rnn_attention, outputs)
 
         rnn_pooled = tf.reshape(rnn_out,[-1,lstm_size])
-        pooled = tf.nn.l2_normalize(pooled, dim=1)
+        rnn_pooled = tf.nn.l2_normalize(rnn_pooled, dim=1)
 
         aggregated_model = getattr(video_level_models, "MoeCombineLayersModel")
         result = aggregated_model().create_model(
             model_input=rnn_pooled,
             vocab_size=vocab_size,
             **unused_params)
-        final_probabilities = result["predictions"]
-        final_probabilities = tf.reduce_max(tf.reshape(final_probabilities,[-1,num_extend,vocab_size]),axis=1)
-        probabilities_by_class = result["predictions_class"]
-        probabilities_by_class = tf.reduce_max(tf.reshape(probabilities_by_class,[-1,num_extend,vocab_size]),axis=1)
 
-        return {"predictions": final_probabilities, "predictions_class": probabilities_by_class}
+        final_probabilities = result["predictions"]
+        probabilities_by_class = result["predictions_class"]
+        final_probabilities = tf.reshape(final_probabilities,[-1,num_extend,vocab_size])
+        probabilities_by_class = tf.reshape(probabilities_by_class,[-1,num_extend,vocab_size*FLAGS.moe_layers])
+        result["predictions"] = tf.reduce_max(final_probabilities)
+        result["predictions_class"] = tf.reduce_max(probabilities_by_class)
+        return result

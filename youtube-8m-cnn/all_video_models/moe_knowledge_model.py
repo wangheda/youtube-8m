@@ -70,6 +70,7 @@ class MoeKnowledgeModel(models.BaseModel):
                                             [-1, vocab_size])
 
         probabilities_by_vocab = probabilities_by_class
+        vocab_input = model_input
         for i in range(FLAGS.moe_layers):
             class_input_1 = slim.fully_connected(
                 probabilities_by_vocab,
@@ -77,18 +78,16 @@ class MoeKnowledgeModel(models.BaseModel):
                 activation_fn=tf.nn.elu,
                 weights_regularizer=slim.l2_regularizer(l2_penalty),
                 scope="class_inputs1-%s" % i)
+            class_input_2 = tf.matmul(probabilities_by_vocab,tf_seq)
             class_input_2 = slim.fully_connected(
-                1-probabilities_by_vocab,
+                class_input_2,
                 class_size,
                 activation_fn=tf.nn.elu,
                 weights_regularizer=slim.l2_regularizer(l2_penalty),
                 scope="class_inputs2-%s" % i)
-            class_input_3 = tf.matmul(probabilities_by_vocab,tf_seq)
-            if not FLAGS.frame_features:
-                class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
-                class_input_2 = tf.nn.l2_normalize(class_input_2,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
-                class_input_3 = tf.nn.l2_normalize(class_input_3,dim=1)*tf.sqrt(tf.cast(25,dtype=tf.float32)/shape)
-            vocab_input = tf.concat((model_input,class_input_1,class_input_2,class_input_3),axis=1)
+            class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+            class_input_2 = tf.nn.l2_normalize(class_input_2,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+            vocab_input = tf.concat((vocab_input,class_input_1,class_input_2),axis=1)
             gate_activations = slim.fully_connected(
                 vocab_input,
                 vocab_size * (num_mixtures + 1),

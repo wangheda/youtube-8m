@@ -44,10 +44,7 @@ class MoeCombineNoiseModel(models.BaseModel):
 
         if FLAGS.train=="train":
             noise = tf.random_normal(shape=tf.shape(model_input), mean=0.0, stddev=FLAGS.noise_std, dtype=tf.float32)
-            if not FLAGS.frame_features:
-                model_input = tf.nn.l2_normalize(model_input+noise, 1)
-            else:
-                model_input = model_input+noise
+            model_input = tf.nn.l2_normalize(model_input+noise, 1)
 
         if FLAGS.moe_group:
             channels = vocab_size//class_size + 1
@@ -95,8 +92,7 @@ class MoeCombineNoiseModel(models.BaseModel):
                     activation_fn=tf.nn.elu,
                     weights_regularizer=slim.l2_regularizer(l2_penalty),
                     scope="class-%s" % i)
-                if not FLAGS.frame_features:
-                    class_input = tf.nn.l2_normalize(class_input,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+                class_input = tf.nn.l2_normalize(class_input,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
                 vocab_input = tf.concat((model_input,class_input),axis=1)
         else:
             gate_activations = slim.fully_connected(
@@ -132,11 +128,10 @@ class MoeCombineNoiseModel(models.BaseModel):
                 activation_fn=tf.nn.elu,
                 weights_regularizer=slim.l2_regularizer(l2_penalty),
                 scope="class_inputs-%s" % i)
-            if not FLAGS.frame_features:
-                if FLAGS.train=="train":
-                    noise = tf.random_normal(shape=tf.shape(class_input), mean=0.0, stddev=0.2, dtype=tf.float32)
-                    class_input = tf.nn.l2_normalize(class_input+noise, 1)
-                class_input = tf.nn.l2_normalize(class_input,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+            if FLAGS.train=="train":
+                noise = tf.random_normal(shape=tf.shape(class_input), mean=0.0, stddev=0.2, dtype=tf.float32)
+                class_input = tf.nn.l2_normalize(class_input+noise, 1)
+            class_input = tf.nn.l2_normalize(class_input,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
             vocab_input = tf.concat((vocab_input,class_input),axis=1)
             gate_activations = slim.fully_connected(
                 vocab_input,
