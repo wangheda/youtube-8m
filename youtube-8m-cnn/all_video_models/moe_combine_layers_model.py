@@ -95,9 +95,8 @@ class MoeCombineLayersModel(models.BaseModel):
                     activation_fn=tf.nn.elu,
                     weights_regularizer=slim.l2_regularizer(l2_penalty),
                     scope="class2-%s" % i)
-                if not FLAGS.frame_features:
-                    class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
-                    class_input_2 = tf.nn.l2_normalize(class_input_2,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+                class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+                class_input_2 = tf.nn.l2_normalize(class_input_2,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
                 vocab_input = tf.concat((model_input,class_input_1,class_input_2),axis=1)
                 """
                 class_input_1 = slim.fully_connected(
@@ -106,8 +105,7 @@ class MoeCombineLayersModel(models.BaseModel):
                     activation_fn=tf.nn.elu,
                     weights_regularizer=slim.l2_regularizer(l2_penalty),
                     scope="class-%s" % i)
-                if not FLAGS.frame_features:
-                    class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+                class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
                 vocab_input = tf.concat((model_input,class_input_1),axis=1)"""
         else:
             gate_activations = slim.fully_connected(
@@ -149,9 +147,8 @@ class MoeCombineLayersModel(models.BaseModel):
                 activation_fn=tf.nn.elu,
                 weights_regularizer=slim.l2_regularizer(l2_penalty),
                 scope="class_inputs2-%s" % i)
-            if not FLAGS.frame_features:
-                class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
-                class_input_2 = tf.nn.l2_normalize(class_input_2,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+            class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+            class_input_2 = tf.nn.l2_normalize(class_input_2,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
             vocab_input = tf.concat((vocab_input,class_input_1,class_input_2),axis=1)
             gate_activations = slim.fully_connected(
                 vocab_input,

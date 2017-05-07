@@ -84,11 +84,10 @@ class MoeAttentionMaxCombineModel(models.BaseModel):
                 activation_fn=tf.nn.elu,
                 weights_regularizer=slim.l2_regularizer(l2_penalty),
                 scope="class_inputs2-%s" % i)
-            if not FLAGS.frame_features:
-                class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
-                class_input_2 = tf.nn.l2_normalize(class_input_2,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
-                input_layers.append(class_input_1)
-                input_layers.append(class_input_2)
+            class_input_1 = tf.nn.l2_normalize(class_input_1,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+            class_input_2 = tf.nn.l2_normalize(class_input_2,dim=1)*tf.sqrt(tf.cast(class_size,dtype=tf.float32)/shape)
+            input_layers.append(class_input_1)
+            input_layers.append(class_input_2)
             vocab_input = tf.concat([model_input_i]+input_layers,axis=1)
             gate_activations = slim.fully_connected(
                 vocab_input,
