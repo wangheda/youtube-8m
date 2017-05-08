@@ -69,45 +69,34 @@ elif [[ $model_type =~ ^sub_model ]]; then
   # sub model
   for i in {1..8}; do
     sub_model_dir="${MODEL_DIR}/sub_model_${i}"
-    cp -r $base_model_dir $sub_model_dir
 
-    echo "training model #$i, reweighting with $last_freq_file"
-    # train N models with re-weighted samples
-    CUDA_VISIBLE_DEVICES=0 python train.py \
-        --train_dir="$sub_model_dir" \
-        --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
-        --frame_features=True \
-        --feature_names="rgb,audio" \
-        --feature_sizes="1024,128" \
-        --reweight=True \
-        --sample_vocab_file="$vocab_file" \
-        --sample_freq_file="$last_freq_file" \
-        --model=CnnDeepCombineChainModel \
-        --moe_num_mixtures=4 \
-        --deep_chain_layers=4 \
-        --deep_chain_relu_cells=128 \
-        --label_loss=MultiTaskCrossEntropyLoss \
-        --multitask=True \
-        --support_type="label,label,label,label" \
-        --support_loss_percent=0.05 \
-        --batch_size=128 \
-        --base_learning_rate=0.001 \
-        --num_readers=2 \
-        --num_epochs=2 \
-        --keep_checkpoint_every_n_hour=72.0 
-
-    # inference-pre-ensemble
-    for part in test ensemble_validate ensemble_train; do
-      CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
-        --output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/sub_model_${i}" \
-        --train_dir="${sub_model_dir}" \
-        --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
-        --frame_features=True \
-        --feature_names="rgb,audio" \
-        --feature_sizes="1024,128" \
-        --batch_size=32 \
-        --file_size=4096
-    done
+    if [ ! -d $sub_model_dir ]; then
+      cp -r $base_model_dir $sub_model_dir
+      echo "training model #$i, reweighting with $last_freq_file"
+      # train N models with re-weighted samples
+      CUDA_VISIBLE_DEVICES=0 python train.py \
+          --train_dir="$sub_model_dir" \
+          --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
+          --frame_features=True \
+          --feature_names="rgb,audio" \
+          --feature_sizes="1024,128" \
+          --reweight=True \
+          --sample_vocab_file="$vocab_file" \
+          --sample_freq_file="$last_freq_file" \
+          --model=CnnDeepCombineChainModel \
+          --moe_num_mixtures=4 \
+          --deep_chain_layers=4 \
+          --deep_chain_relu_cells=128 \
+          --label_loss=MultiTaskCrossEntropyLoss \
+          --multitask=True \
+          --support_type="label,label,label,label" \
+          --support_loss_percent=0.05 \
+          --batch_size=128 \
+          --base_learning_rate=0.001 \
+          --num_readers=2 \
+          --num_epochs=2 \
+          --keep_checkpoint_every_n_hour=72.0 
+    fi
 
     # get error mapping
     CUDA_VISIBLE_DEVICES=0 python inference-sample-error.py \
@@ -129,14 +118,36 @@ elif [[ $model_type =~ ^sub_model ]]; then
 
     last_freq_file="${sub_model_dir}/train.video_id.next_freq"
 
+  done
+
+elif [[ $model_type =~ ^ensemble ]]; then
+
+  for i in {1..8}; do
+    sub_model_dir="${MODEL_DIR}/sub_model_${i}"
+
+    # inference-pre-ensemble
+    for part in test ensemble_validate ensemble_train; do
+      CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
+        --output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/sub_model_${i}" \
+        --train_dir="${sub_model_dir}" \
+        --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
+        --frame_features=True \
+        --feature_names="rgb,audio" \
+        --feature_sizes="1024,128" \
+        --batch_size=32 \
+        --file_size=4096
+    done
+
     echo "${model_name}/sub_model_$i" >> ${MODEL_DIR}/ensemble.conf
+    
+    exit 0
 
   done
 
   # on ensemble server
-  cd ../youtube-8m-ensemble
-  bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
-  bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+  #cd ../youtube-8m-ensemble
+  #bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+  #bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
   #bash ensemble_scripts/infer-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 fi
 
