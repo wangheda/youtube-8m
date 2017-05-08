@@ -89,7 +89,7 @@ elif [[ $model_type =~ ^sub_model ]]; then
 
   # inference-pre-ensemble
   for part in test ensemble_validate ensemble_train; do
-    CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
+    CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble.py \
       --output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/${model_type}" \
       --train_dir="${sub_model_dir}" \
       --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \

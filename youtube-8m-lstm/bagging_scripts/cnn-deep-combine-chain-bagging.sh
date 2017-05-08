@@ -75,7 +75,7 @@ elif [[ $model_type =~ ^sub_model ]]; then
 
   # train N models with re-weighted samples
   CUDA_VISIBLE_DEVICES=0 python train.py \
-      --train_dir="$base_model_dir" \
+      --train_dir="$sub_model_dir" \
       --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
       --frame_features=True \
       --feature_names="rgb,audio" \
