@@ -14,6 +14,7 @@
 
 """Binary for generating predictions over a set of videos."""
 
+import gc
 import os
 import time
 
@@ -100,6 +101,7 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
     video_id_batch, video_batch, unused_labels, num_frames_batch = (
         tf.train.batch_join(examples_and_labels,
                             batch_size=batch_size,
+                            capacity=16*batch_size,
                             allow_smaller_final_batch=True,
                             enqueue_many=True))
     return video_id_batch, video_batch, unused_labels, num_frames_batch
@@ -157,6 +159,7 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
     else:
         raise IOError("Output path exists! path='" + directory + "'")
 
+    iterations = 0
     try:
       while not coord.should_stop():
           video_id_batch_val, video_batch_val, video_label_batch_val, num_frames_batch_val = sess.run([video_id_batch, video_batch, video_label_batch, num_frames_batch])
@@ -182,6 +185,13 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
             video_inputs = []
             video_features = []
             num_examples_processed = 0
+
+            if (iterations+1) % 3 == 0:
+              print "running gc .."
+              gc.collect()
+              print "gc done"
+            iterations += 1
+
 
           logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
 
