@@ -15,20 +15,24 @@
 """Binary for generating error rates over a set of videos."""
 
 import os
+import gc
 import time
+
+import eval_util
+import losses
+import frame_level_models
+import video_level_models
+import data_augmentation
+import feature_transform
+import readers
+import utils
 
 import numpy
 import tensorflow as tf
-
 from tensorflow import app
 from tensorflow import flags
 from tensorflow import gfile
 from tensorflow import logging
-
-import eval_util
-import losses
-import readers
-import utils
 
 FLAGS = flags.FLAGS
 
@@ -58,9 +62,13 @@ if __name__ == '__main__':
   flags.DEFINE_string("feature_names", "mean_rgb", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
+  flags.DEFINE_string(
+      "model", "LogisticModel",
+      "Which architecture to use for the model. Models are defined "
+      "in models.py.")
 
   # Other flags.
-  flags.DEFINE_integer("num_readers", 1,
+  flags.DEFINE_integer("num_readers", 2,
                        "How many threads to use for reading input files.")
   flags.DEFINE_integer("top_k", 20,
                        "How many predictions to output per video.")
@@ -70,6 +78,14 @@ if __name__ == '__main__':
       "Whether to consider dropout")
   flags.DEFINE_float("keep_prob", 1.0, 
       "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
+  flags.DEFINE_float("noise_level", 0.0, 
+      "standard deviation of noise (added to hidden nodes)")
+
+
+def find_class_by_name(name, modules):
+  """Searches the provided modules for the named class and returns it."""
+  modules = [getattr(module, name, None) for module in modules]
+  return next(a for a in modules if a)
 
 def format_lines(video_ids, predictions, labels):
   batch_size = len(video_ids)
@@ -112,30 +128,89 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
     video_id_batch, video_batch, labels_batch, num_frames_batch = (
         tf.train.batch_join(examples_and_labels,
                             batch_size=batch_size,
+                            capacity=batch_size * 3,
                             allow_smaller_final_batch = True,
                             enqueue_many=True))
     return video_id_batch, video_batch, labels_batch, num_frames_batch
+    
 
-def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
-  with tf.Session() as sess, gfile.Open(out_file_location, "w+") as out_file:
-    video_id_batch, video_batch, labels_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
+def build_graph(reader,
+                model,
+                input_data_pattern,
+                label_loss_fn=losses.CrossEntropyLoss(),
+                batch_size=1000,
+                transformer_class=feature_transform.DefaultTransformer):
+  
+  video_id, model_input_raw, labels_batch, num_frames = (
+      get_input_data_tensors(
+          reader,
+          input_data_pattern,
+          batch_size=batch_size,
+          num_readers=FLAGS.num_readers))
+
+  feature_transformer = transformer_class()
+  model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
+
+  with tf.name_scope("model"):
+    if FLAGS.noise_level > 0:
+      noise_level_tensor = tf.placeholder_with_default(0.0, shape=[], name="noise_level")
+    else:
+      noise_level_tensor = None
+
+    if FLAGS.dropout:
+      keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
+      result = model.create_model(
+          model_input,
+          num_frames=num_frames,
+          vocab_size=reader.num_classes,
+          labels=labels_batch,
+          dropout=FLAGS.dropout,
+          keep_prob=keep_prob_tensor,
+          noise_level=noise_level_tensor)
+    else:
+      result = model.create_model(
+          model_input,
+          num_frames=num_frames,
+          vocab_size=reader.num_classes,
+          labels=labels_batch,
+          noise_level=noise_level_tensor)
+
+    print "result", result
+    predictions = result["predictions"]
+
+    tf.add_to_collection("predictions", predictions)
+    tf.add_to_collection("video_id_batch", video_id)
+    tf.add_to_collection("input_batch_raw", model_input_raw)
+    tf.add_to_collection("input_batch", model_input)
+    tf.add_to_collection("num_frames", num_frames)
+    tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
+    if FLAGS.dropout:
+      tf.add_to_collection("keep_prob", keep_prob_tensor)
+    if FLAGS.noise_level > 0:
+      tf.add_to_collection("noise_level", noise_level_tensor)
+
+
+def inference(saver, train_dir, out_file_location, batch_size, top_k):
+
+  with tf.Session() as sess, open(out_file_location, "w") as out_file:
+    
     if FLAGS.model_checkpoint_path:
       latest_checkpoint = FLAGS.model_checkpoint_path
     else:
       latest_checkpoint = tf.train.latest_checkpoint(train_dir)
+
     if latest_checkpoint is None:
       raise Exception("unable to find a checkpoint at location: %s" % train_dir)
-    else:
-      meta_graph_location = latest_checkpoint + ".meta"
-      logging.info("loading meta-graph: " + meta_graph_location)
-    saver = tf.train.import_meta_graph(meta_graph_location, clear_devices=True)
+
     logging.info("restoring variables from " + latest_checkpoint)
     saver.restore(sess, latest_checkpoint)
+
     input_tensor = tf.get_collection("input_batch_raw")[0]
     num_frames_tensor = tf.get_collection("num_frames")[0]
     predictions_tensor = tf.get_collection("predictions")[0]
-    if FLAGS.dropout:
-      keep_prob_tensor = tf.get_collection("keep_prob")[0]
+    video_id_tensor = tf.get_collection("video_id_batch")[0]
+    labels_tensor = tf.get_collection("labels")[0]
+    init_op = tf.global_variables_initializer()
 
     # Workaround for num_epochs issue.
     def set_up_init_ops(variables):
@@ -158,25 +233,23 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
 
     try:
       while not coord.should_stop():
-          video_id_batch_val, video_batch_val, labels_batch_val, num_frames_batch_val = sess.run([video_id_batch, video_batch, labels_batch, num_frames_batch])
-          if FLAGS.dropout:
-            predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val, keep_prob_tensor: FLAGS.keep_prob})
-          else:
-            predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
-          now = time.time()
-          num_examples_processed += len(video_batch_val)
-          num_classes = predictions_val.shape[1]
-          logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
-          for line in format_lines(video_id_batch_val, predictions_val, labels_batch_val):
-            out_file.write(line)
-          out_file.flush()
 
+        predictions_val, video_id_batch_val, labels_batch_val = sess.run([predictions_tensor, video_id_tensor, labels_tensor])
+
+        num_examples_processed += len(video_id_batch_val)
+        num_classes = predictions_val.shape[1]
+
+        out_file.writelines([line for line in format_lines(video_id_batch_val, predictions_val, labels_batch_val)])
+
+        now = time.time()
+        logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
 
     except tf.errors.OutOfRangeError:
         logging.info('Done with inference. The output file was written to ' + out_file_location)
     finally:
         coord.request_stop()
 
+    out_file.flush()
     coord.join(threads)
     sess.close()
 
@@ -203,8 +276,21 @@ def main(unused_argv):
     raise ValueError("'input_data_pattern' was not specified. "
       "Unable to continue with inference.")
 
-  inference(reader, FLAGS.train_dir, FLAGS.input_data_pattern,
-    FLAGS.output_file, FLAGS.batch_size, FLAGS.top_k)
+  model = find_class_by_name(FLAGS.model,
+                             [frame_level_models, video_level_models])()
+  transformer_fn = find_class_by_name(FLAGS.feature_transformer, 
+                                         [feature_transform])
+
+  build_graph(reader,
+              model,
+              input_data_pattern=FLAGS.input_data_pattern,
+              batch_size=FLAGS.batch_size,
+              transformer_class=transformer_fn)
+
+  saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=10000000000)
+
+  inference(saver, FLAGS.train_dir,
+            FLAGS.output_file, FLAGS.batch_size, FLAGS.top_k)
 
 
 if __name__ == "__main__":
