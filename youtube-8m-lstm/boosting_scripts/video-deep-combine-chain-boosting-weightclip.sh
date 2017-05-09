@@ -33,35 +33,37 @@ fi
 base_model_dir="${MODEL_DIR}/base_model"
 
 # base model (4 epochs)
-mkdir -p $base_model_dir
-for j in {1..2}; do 
-  CUDA_VISIBLE_DEVICES=0 python train.py \
-    --train_dir="$base_model_dir" \
-    --train_data_pattern="/Youtube-8M/data/video/train/train*" \
-    --frame_features=False \
-    --feature_names="mean_rgb,mean_audio" \
-    --feature_sizes="1024,128" \
-    --model=DeepCombineChainModel \
-    --moe_num_mixtures=4 \
-    --deep_chain_relu_cells=256 \
-    --deep_chain_layers=4 \
-    --label_loss=MultiTaskCrossEntropyLoss \
-    --multitask=True \
-    --support_type="label,label,label,label" \
-    --num_supports=18864 \
-    --support_loss_percent=0.05 \
-    --reweight=True \
-    --sample_vocab_file="$vocab_file" \
-    --sample_freq_file="$default_freq_file" \
-    --keep_checkpoint_every_n_hour=8.0 \
-    --keep_checkpoint_interval=6 \
-    --base_learning_rate=0.01 \
-    --data_augmenter=NoiseAugmenter \
-    --input_noise_level=0.2 \
-    --num_readers=2 \
-    --num_epochs=2 \
-    --batch_size=1024
-done
+if [ ! -d $base_model_dir ]; then
+  mkdir -p $base_model_dir
+  for j in {1..2}; do 
+    CUDA_VISIBLE_DEVICES=0 python train.py \
+      --train_dir="$base_model_dir" \
+      --train_data_pattern="/Youtube-8M/data/video/train/train*" \
+      --frame_features=False \
+      --feature_names="mean_rgb,mean_audio" \
+      --feature_sizes="1024,128" \
+      --model=DeepCombineChainModel \
+      --moe_num_mixtures=4 \
+      --deep_chain_relu_cells=256 \
+      --deep_chain_layers=4 \
+      --label_loss=MultiTaskCrossEntropyLoss \
+      --multitask=True \
+      --support_type="label,label,label,label" \
+      --num_supports=18864 \
+      --support_loss_percent=0.05 \
+      --reweight=True \
+      --sample_vocab_file="$vocab_file" \
+      --sample_freq_file="$default_freq_file" \
+      --keep_checkpoint_every_n_hour=8.0 \
+      --keep_checkpoint_interval=6 \
+      --base_learning_rate=0.01 \
+      --data_augmenter=NoiseAugmenter \
+      --input_noise_level=0.2 \
+      --num_readers=2 \
+      --num_epochs=2 \
+      --batch_size=1024
+  done
+fi
 
 last_freq_file=$default_freq_file
 
