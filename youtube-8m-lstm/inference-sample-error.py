@@ -234,6 +234,7 @@ def inference(saver, train_dir, out_file_location, batch_size, top_k):
     try:
       while not coord.should_stop():
 
+        # for speed reason, here we use the graph, instead of using feed_dict and numpy arrays
         predictions_val, video_id_batch_val, labels_batch_val = sess.run([predictions_tensor, video_id_tensor, labels_tensor])
 
         num_examples_processed += len(video_id_batch_val)
