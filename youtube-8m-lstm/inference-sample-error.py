@@ -63,7 +63,7 @@ if __name__ == '__main__':
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
   flags.DEFINE_string(
-      "model", "LogisticModel",
+      "model", "YouShouldSpecifyAModel",
       "Which architecture to use for the model. Models are defined "
       "in models.py.")
 
