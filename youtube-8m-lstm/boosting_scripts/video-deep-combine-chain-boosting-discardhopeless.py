@@ -3,7 +3,7 @@
 # base_model or sub_model_1 or sub_model_2 or so on
 #model_type="$1"
 
-model_name="video_dcc_boosting_weightclip"
+model_name="video_dcc_boosting_discardhopeless"
 MODEL_DIR="../model/${model_name}"
 
 vocab_file="resources/train.video_id.vocab"
@@ -144,7 +144,7 @@ for i in {1..8}; do
   if [ ! -f $output_freq_file ]; then
     echo "generating reweight freq to $output_freq_file"
     python training_utils/reweight_sample_freq.py \
-        --discard_weight=12.0 \
+        --discard_weight=20.0 \
         --video_id_file="$vocab_file" \
         --input_freq_file="$last_freq_file" \
         --input_error_file="${sub_model_dir}/train.video_id.error" \
