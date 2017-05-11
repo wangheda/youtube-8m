@@ -50,7 +50,7 @@ if [ $model_type == "base_model" ]; then
     --moe_num_mixtures=8 \
     --lstm_attentions=8 \
     --rnn_swap_memory=True \
-    --base_learning_rate=0.0006 \
+    --base_learning_rate=0.001 \
     --num_readers=2 \
     --num_epochs=5 \
     --batch_size=128 \
