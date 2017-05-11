@@ -28,6 +28,8 @@ from tensorflow import app
 from tensorflow import flags
 from tensorflow import gfile
 from tensorflow import logging
+from tensorflow.python.ops import variables as tf_variables
+from mygradients import mygradients, mygradients_full
 import utils
 
 FLAGS = flags.FLAGS
@@ -59,6 +61,12 @@ if __name__ == "__main__":
       "Otherwise, --train_data_pattern must be aggregated video-level "
       "features. The model must also be set appropriately (i.e. to read 3D "
       "batches VS 4D batches.")
+  flags.DEFINE_bool(
+      "norm", True,
+      "If set, then --train_data_pattern must be frame-level features. "
+      "Otherwise, --train_data_pattern must be aggregated video-level "
+      "features. The model must also be set appropriately (i.e. to read 3D "
+      "batches VS 4D batches.")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Models are defined "
@@ -71,7 +79,7 @@ if __name__ == "__main__":
   # Training flags.
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch for training.")
-  flags.DEFINE_integer("stride_size", 4,
+  flags.DEFINE_integer("stride_size", 3,
                        "How many examples to process per batch for training.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Which loss function to use for training the model.")
@@ -95,6 +103,8 @@ if __name__ == "__main__":
   flags.DEFINE_integer("num_readers", 8,
                        "How many threads to use for reading input files.")
   flags.DEFINE_string("optimizer", "AdamOptimizer",
+                      "What optimizer class to use.")
+  flags.DEFINE_string("gradient", None,
                       "What optimizer class to use.")
   flags.DEFINE_float("clip_gradient_norm", 0.1, "Norm to clip gradients to.")
   flags.DEFINE_bool(
@@ -228,7 +238,6 @@ def build_graph(reader,
       staircase=True)
   tf.summary.scalar('learning_rate', learning_rate)
 
-  optimizer = optimizer_class(learning_rate)
   unused_video_id, model_input_raw, labels_batch, num_frames = (
       get_input_data_tensors(
           reader,
@@ -239,8 +248,10 @@ def build_graph(reader,
   tf.summary.histogram("model/input_raw", model_input_raw)
   
   feature_dim = len(model_input_raw.get_shape()) - 1
-
-  model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+  if FLAGS.norm:
+    model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+  else:
+    model_input = model_input_raw
 
   with tf.name_scope("model"):
     result = model.create_model(
@@ -253,6 +264,14 @@ def build_graph(reader,
       tf.summary.histogram(variable.op.name, variable)
 
     predictions = result["predictions"]
+    if "predictions_negative" in result.keys():
+        predictions_negative = result["predictions_negative"]
+    else:
+        predictions_negative = 1-predictions
+    if "predictions_positive" in result.keys():
+        predictions_positive = result["predictions_positive"]
+    else:
+        predictions_positive = predictions
     if predictions.get_shape().ndims==3:
         predictions = tf.reshape(predictions,[-1,predictions.get_shape().as_list()[2]])
         labels_batch = tf.reshape(labels_batch,[-1,labels_batch.get_shape().as_list()[2]])
@@ -264,11 +283,34 @@ def build_graph(reader,
         predictions_class = result["predictions_class"]
     else:
         predictions_class = predictions
+    if "predictions_encoder" in result.keys():
+        predictions_encoder = result["predictions_encoder"]
+    else:
+        predictions_encoder = predictions
+    if "predictions_experts" in result.keys():
+        predictions_experts = result["predictions_experts"]
+    else:
+        predictions_experts = predictions
+    if "predictions_postprocess" in result.keys():
+        predictions_postprocess = result["predictions_postprocess"]
+    else:
+        predictions_postprocess = predictions
 
     if "loss" in result.keys():
-      label_loss = result["loss"]
+      append_loss = result["loss"]
+    else:
+      append_loss = tf.constant(0.0)
+    if "predictions_encoder" in result.keys():
+      label_loss, float_encoders = label_loss_fn.calculate_loss_mix2(predictions, predictions_class, predictions_encoder, labels_batch)
+      tf.summary.histogram("model/float_encoders", float_encoders)
     elif "predictions_class" in result.keys():
       label_loss = label_loss_fn.calculate_loss_mix(predictions, predictions_class, labels_batch)
+    elif "predictions_experts" in result.keys():
+      label_loss = label_loss_fn.calculate_loss_max(predictions, predictions_experts, labels_batch)
+    elif "predictions_postprocess" in result.keys():
+      label_loss = label_loss_fn.calculate_loss_postprocess(predictions_postprocess, labels_batch)
+    elif "predictions_negative" in result.keys():
+      label_loss = label_loss_fn.calculate_loss_negative(predictions_positive, predictions_negative, labels_batch)
     else:
       label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
 
@@ -282,8 +324,8 @@ def build_graph(reader,
         frames_bool = tf.reshape(frames_bool[:,0:max_frames:FLAGS.stride_size],[-1,1])
         labels_frames = tf.tile(tf.reshape(labels_batch,[-1,1,reader.num_classes]),[1,max_frames//FLAGS.stride_size,1])
         labels_frames = tf.cast(tf.reshape(labels_frames,[-1,reader.num_classes]),tf.float32)*frames_bool
-        frame_loss = label_loss_fn.calculate_loss(predictions_frames, labels_frames)
-        label_loss = tf.constant(0.0)
+        predictions_frames = predictions_frames*frames_bool
+        frame_loss = 0.1*label_loss_fn.calculate_loss(predictions_frames, labels_frames)
     else:
         frame_loss = tf.constant(0.0)
     tf.summary.scalar("label_loss", label_loss)
@@ -312,12 +354,20 @@ def build_graph(reader,
           label_loss = tf.identity(label_loss)
 
     # Incorporate the L2 weight penalties etc.
-    final_loss = regularization_penalty * reg_loss + label_loss + frame_loss
-    train_op = slim.learning.create_train_op(
-        final_loss,
-        optimizer,
-        global_step=global_step,
-        clip_gradient_norm=clip_gradient_norm)
+    final_loss = regularization_penalty * reg_loss + label_loss + frame_loss + append_loss
+    if FLAGS.gradient=="my":
+        opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
+        variables_to_train = tf_variables.trainable_variables()
+        top_grads, top_vars = mygradients(final_loss, variables_to_train,  global_step=global_step, name="mygradients_net")
+        grads_and_vars = list(zip(top_grads, top_vars))
+        train_op = opt.apply_gradients(grads_and_vars, global_step=global_step)
+    else:
+        optimizer = optimizer_class(learning_rate)
+        train_op = slim.learning.create_train_op(
+            final_loss,
+            optimizer,
+            global_step=global_step,
+            clip_gradient_norm=clip_gradient_norm)
 
     tf.add_to_collection("global_step", global_step)
     tf.add_to_collection("loss", final_loss)
@@ -390,7 +440,7 @@ class Trainer(object):
         init_op=init_op,
         is_chief=self.is_master,
         global_step=global_step,
-        save_model_secs=60 * 60,
+        save_model_secs=15 * 60,
         save_summaries_secs=120,
         saver=saver)
 
@@ -535,7 +585,7 @@ class Trainer(object):
 
     logging.info("%s: Built graph.", task_as_string(self.task))
 
-    return tf.train.Saver(max_to_keep=0, keep_checkpoint_every_n_hours=0.25)
+    return tf.train.Saver(max_to_keep=2, keep_checkpoint_every_n_hours=1)
 
 
 class ParameterServer(object):
