@@ -89,26 +89,32 @@ elif [[ $model_type =~ ^sub_model ]]; then
     fi
 
     # get error mapping
-    CUDA_VISIBLE_DEVICES=1 python inference-sample-error.py \
-      --output_file="${sub_model_dir}/train.video_id.error" \
-      --train_dir="${sub_model_dir}" \
-      --input_data_pattern="/Youtube-8M/data/frame/train/*.tfrecord" \
-      --frame_features=True \
-      --feature_names="rgb,audio" \
-      --feature_sizes="1024,128" \
-      --model=LstmParallelFinaloutputModel \
-      --lstm_cells="1024,128" \
-      --moe_num_mixtures=8 \
-      --rnn_swap_memory=True \
-      --batch_size=128 
+    sample_error_file="${sub_model_dir}/train.video_id.error"
+    if [ ! -f $sample_error_file ]; then 
+      CUDA_VISIBLE_DEVICES=1 python inference-sample-error.py \
+        --output_file="$sample_error_file" \
+        --train_dir="${sub_model_dir}" \
+        --input_data_pattern="/Youtube-8M/data/frame/train/*.tfrecord" \
+        --frame_features=True \
+        --feature_names="rgb,audio" \
+        --feature_sizes="1024,128" \
+        --model=LstmParallelFinaloutputModel \
+        --lstm_cells="1024,128" \
+        --moe_num_mixtures=8 \
+        --rnn_swap_memory=True \
+        --batch_size=128 
+    fi
 
     # generate resample freq file
-    python training_utils/reweight_sample_freq.py \
+    output_freq_file="${sub_model_dir}/train.video_id.next_freq"
+    if [ ! -f $output_freq_file ]; then
+      python training_utils/reweight_sample_freq.py \
         --clip_weight=5.0 \
         --video_id_file="$vocab_file" \
         --input_freq_file="$last_freq_file" \
         --input_error_file="${sub_model_dir}/train.video_id.error" \
-        --output_freq_file="${sub_model_dir}/train.video_id.next_freq"
+        --output_freq_file="$output_freq_file"
+    fi
 
     last_freq_file="${sub_model_dir}/train.video_id.next_freq"
     echo "${model_name}/sub_model_$i" >> ${MODEL_DIR}/ensemble.conf
