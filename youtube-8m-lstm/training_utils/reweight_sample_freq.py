@@ -12,6 +12,11 @@ if __name__=="__main__":
   flags.DEFINE_string("input_freq_file", "", "The previous weight of each video.")
   flags.DEFINE_string("input_error_file", "", "The error of each video.")
   flags.DEFINE_string("output_freq_file", "", "Output the corresponding freq of video_ids.")
+  flags.DEFINE_float("clip_weight", None, "The max value of sample weight. "
+                     "Exceeding part will be randomly distributed to other videos.")
+  flags.DEFINE_float("discard_weight", None, "The max value of sample weight. "
+                     "The weight exceeding it will be cut to zero with its weight "
+                     "randomly distributed to other videos.")
 
 if __name__=="__main__":
   word_list = []
@@ -50,8 +55,38 @@ if __name__=="__main__":
   for video_id in word_list:
     freq_dict[video_id] = freq_dict[video_id] * math.exp(ratio * error_dict[video_id])
 
+  pool = 0.0
+
+  # discarding weight
+  if FLAGS.discard_weight:
+    # discarding
+    discard = FLAGS.discard_weight
+    pool = 0.0
+    for video_id in word_list:
+      if freq_dict[video_id] > discard:
+        pool += freq_dict[video_id]
+        freq_dict[video_id] = 0.0
+
+  # clipping weight
+  if FLAGS.clip_weight:
+    # clipping 
+    clip = FLAGS.clip_weight
+    pool = 0.0
+    for video_id in word_list:
+      if freq_dict[video_id] > clip:
+        pool += freq_dict[video_id] - clip
+        freq_dict[video_id] = clip
+
+  if pool > 0:
+    # re-distributed to other video_id
+    random.seed(datetime.now())
+    avg_pool = pool / len(word_list)
+    for video_id in word_list:
+      if freq_dict[video_id] > 0:
+        freq_dict[video_id] += random.random() * 2 * avg_pool
+
   # make the average value 1.0
-  freq_rel_ratio = sum(freq_dict.values()) / len(freq_dict)
+  freq_rel_ratio = max(sum(freq_dict.values()) / len(freq_dict), 1e-6)
   for video_id in word_list:
     freq_dict[video_id] /= freq_rel_ratio
 

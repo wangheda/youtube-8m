@@ -3,7 +3,7 @@
 # base_model or sub_model_1 or sub_model_2 or so on
 #model_type="$1"
 
-model_name="video_dcc_boosting_weightclip"
+model_name="video_dcc_boosting_discardhopeless"
 MODEL_DIR="../model/${model_name}"
 
 vocab_file="resources/train.video_id.vocab"
@@ -124,6 +124,7 @@ for i in {1..8}; do
   # get error mapping
   output_error_file="${sub_model_dir}/train.video_id.error"
   if [ ! -f $output_error_file ]; then
+    echo "generating error mapping to $output_error_file"
     CUDA_VISIBLE_DEVICES=0 python inference-sample-error.py \
       --output_file="${output_error_file}" \
       --train_dir="${sub_model_dir}" \
@@ -141,8 +142,9 @@ for i in {1..8}; do
   # generate resample freq file
   output_freq_file="${sub_model_dir}/train.video_id.next_freq"
   if [ ! -f $output_freq_file ]; then
+    echo "generating reweight freq to $output_freq_file"
     python training_utils/reweight_sample_freq.py \
-        --clip_weight=5.0 \
+        --discard_weight=20.0 \
         --video_id_file="$vocab_file" \
         --input_freq_file="$last_freq_file" \
         --input_error_file="${sub_model_dir}/train.video_id.error" \
