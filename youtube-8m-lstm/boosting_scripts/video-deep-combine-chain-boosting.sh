@@ -118,6 +118,10 @@ for i in {1..8}; do
     --frame_features=False \
     --feature_names="mean_rgb,mean_audio" \
     --feature_sizes="1024,128" \
+    --model=DeepCombineChainModel \
+    --moe_num_mixtures=4 \
+    --deep_chain_relu_cells=256 \
+    --deep_chain_layers=4 \
     --batch_size=1024 
 
   # generate resample freq file
