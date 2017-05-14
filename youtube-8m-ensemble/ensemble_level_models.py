@@ -37,6 +37,9 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
     "hidden_chain_relu_cells", 256,
     "The number of relu cells used for HiddenChainModel")
+flags.DEFINE_integer(
+    "attention_matrix_rank", 3,
+    "The rank of weight matrix used for AttentionMatrixModel.")
 
 import sys
 from os.path import dirname
