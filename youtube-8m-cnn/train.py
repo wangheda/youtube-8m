@@ -316,16 +316,25 @@ def build_graph(reader,
 
     if "prediction_frames" in result.keys():
         predictions_frames = result["prediction_frames"]
-        max_frames = model_input.get_shape().as_list()[1]
-        frames_sum = tf.reduce_sum(tf.abs(model_input),axis=2)
-        frames_true = tf.ones(tf.shape(frames_sum))
-        frames_false = tf.zeros(tf.shape(frames_sum))
-        frames_bool = tf.where(tf.greater(frames_sum, frames_false), frames_true, frames_false)
-        frames_bool = tf.reshape(frames_bool[:,0:max_frames:FLAGS.stride_size],[-1,1])
-        labels_frames = tf.tile(tf.reshape(labels_batch,[-1,1,reader.num_classes]),[1,max_frames//FLAGS.stride_size,1])
-        labels_frames = tf.cast(tf.reshape(labels_frames,[-1,reader.num_classes]),tf.float32)*frames_bool
-        predictions_frames = predictions_frames*frames_bool
-        frame_loss = 0.1*label_loss_fn.calculate_loss(predictions_frames, labels_frames)
+        labels_frames = tf.tile(tf.reshape(labels_batch,[-1,1,reader.num_classes]),[1,FLAGS.moe_num_extend,1])
+        labels_frames = tf.cast(tf.reshape(labels_frames,[-1,reader.num_classes]),tf.float32)
+        frame_loss = label_loss_fn.calculate_loss(predictions_frames, labels_frames)
+        if "prediction_prepare_frames" in result.keys():
+            prediction_prepare_frames = result["prediction_prepare_frames"]
+            prediction_prepare_video = result["prediction_prepare_video"]
+            max_frames = model_input.get_shape().as_list()[1]
+            frames_sum = tf.reduce_sum(tf.abs(model_input),axis=2)
+            frames_true = tf.ones(tf.shape(frames_sum))
+            frames_false = tf.zeros(tf.shape(frames_sum))
+            frames_bool = tf.where(tf.greater(frames_sum, frames_false), frames_true, frames_false)
+            frames_bool = tf.reshape(frames_bool[:,0:max_frames:FLAGS.stride_size],[-1,1])
+            labels_prepare_frames = tf.tile(tf.reshape(labels_batch,[-1,1,reader.num_classes]),[1,max_frames//FLAGS.stride_size,1])
+            labels_prepare_frames = tf.cast(tf.reshape(labels_prepare_frames,[-1,reader.num_classes]),tf.float32)*frames_bool
+            prediction_prepare_frames = prediction_prepare_frames*frames_bool
+            label_loss = 0.1*label_loss_fn.calculate_loss(prediction_prepare_frames, labels_prepare_frames) + \
+                        0.1*label_loss_fn.calculate_loss(prediction_prepare_video, labels_batch)
+        else:
+            label_loss = label_loss*0.0
     else:
         frame_loss = tf.constant(0.0)
     tf.summary.scalar("label_loss", label_loss)
