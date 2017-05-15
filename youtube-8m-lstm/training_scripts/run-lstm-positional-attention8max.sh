@@ -1,6 +1,6 @@
 
-CUDA_VISIBLE_DEVICES=1 python train.py \
-    --train_dir="../model/lstm_positional_attention8max" \
+CUDA_VISIBLE_DEVICES=0 python train.py \
+    --train_dir="../x27_model/lstm_positional_attention8max" \
     --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
     --frame_features=True \
     --feature_names="rgb,audio" \
