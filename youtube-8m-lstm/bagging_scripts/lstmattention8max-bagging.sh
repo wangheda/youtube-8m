@@ -81,9 +81,9 @@ elif [[ $model_type =~ ^sub_model ]]; then
     --moe_num_mixtures=8 \
     --lstm_attentions=8 \
     --rnn_swap_memory=True \
-    --base_learning_rate=0.0006 \
-    --num_readers=2 \
-    --num_epochs=5 \
+    --base_learning_rate=0.001 \
+    --num_readers=4 \
+    --num_epochs=1 \
     --batch_size=128 \
     --keep_checkpoint_every_n_hour=72.0 
 
@@ -96,6 +96,10 @@ elif [[ $model_type =~ ^sub_model ]]; then
       --frame_features=True \
       --feature_names="rgb,audio" \
       --feature_sizes="1024,128" \
+      --model=LstmParallelFinaloutputModel \
+      --lstm_cells="1024,128" \
+      --moe_num_mixtures=8 \
+      --rnn_swap_memory=True \
       --batch_size=32 \
       --file_size=4096
   done
