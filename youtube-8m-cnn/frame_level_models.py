@@ -25,7 +25,6 @@ import numpy as np
 import tensorflow.contrib.slim as slim
 from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 from tensorflow import flags
-import rnn_residual
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("iterations", 30,
