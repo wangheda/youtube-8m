@@ -122,17 +122,30 @@ class CrossEntropyLoss(BaseLoss):
         cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
             1 - float_labels) * tf.log(1 - predictions + epsilon)
 
-      elif FLAGS.loss_function=="loss_delete":
-        print("loss_delete")
+      elif FLAGS.loss_function=="loss_relabel":
+        print("loss_relabel")
 
         cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
             1 - float_labels) * tf.log(1 - predictions + epsilon)
-        batch_size = tf.cast(tf.shape(predictions)[0],dtype=tf.float32)
-        vocab_size = tf.cast(tf.shape(predictions)[1],dtype=tf.float32)
-        topk_num = tf.cast(batch_size*vocab_size*0.0001,dtype=tf.int32)
-        cross_entropy_loss = tf.reshape(tf.negative(cross_entropy_loss),[1,-1])
-        margin_loss,_ = tf.nn.top_k(cross_entropy_loss,k=topk_num)
-        margin_loss = (tf.reduce_sum(cross_entropy_loss)-tf.reduce_sum(margin_loss))/batch_size
+        margin_loss_pre = tf.reduce_mean(tf.reduce_sum(tf.negative(cross_entropy_loss), 1))
+        batch_size = tf.shape(float_labels)[0]
+        vocab_size = float_labels.get_shape().as_list()[1]
+        def f1():
+          return margin_loss_pre
+        def f2():
+          float_labels = tf.cast(labels, tf.float32)
+          max_index = tf.cast(tf.reshape(tf.arg_max(predictions,dimension=1), [-1, 1]),dtype=tf.float32)
+          labels_temp = tf.cast(tf.tile(tf.expand_dims(tf.range(vocab_size), 0), [batch_size, 1]),dtype=tf.float32)
+          labels_true = tf.ones(tf.shape(labels_temp))
+          labels_false = tf.zeros(tf.shape(labels_temp))
+          labels_add = tf.where(tf.equal(labels_temp, max_index), labels_true, labels_false)
+          print(labels_add.get_shape().as_list())
+          float_labels = float_labels+labels_add*(1.0-float_labels)
+          cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
+              1 - float_labels) * tf.log(1 - predictions + epsilon)
+          margin_loss_now = tf.reduce_mean(tf.reduce_sum(tf.negative(cross_entropy_loss), 1))
+          return margin_loss_now
+        margin_loss = tf.cond(tf.less(margin_loss_pre, tf.constant(10.0)), f1, f2)
 
         cross_entropy_loss = cross_entropy_loss*0.0
 
