@@ -8,7 +8,7 @@ for d in $(cat $conf); do
 done
 echo "$validate_data_patterns"
 
-CUDA_VISIBLE_DEVICES=0 python eval.py \
+python eval.py \
       --model_checkpoint_path="../model/${model}/model.ckpt-0" \
       --train_dir="../model/${model}" \
       --model="MeanModel" \
