@@ -152,12 +152,13 @@ def inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batc
         video_inputs.append(inputs_val)
         video_predictions.append(predictions_val)
         num_examples_processed += len(ids_val)
-        ids_val = None
 
         ids_shape = ids_val.shape[0]
         inputs_shape = inputs_val.shape[0]
         predictions_shape = predictions_val.shape[0]
         assert ids_shape == inputs_shape == predictions_shape, "tensor ids(%d), inputs(%d) and predictions(%d) should have equal rows" % (ids_shape, inputs_shape, predictions_shape)
+
+        ids_val = None
 
         if num_examples_processed >= FLAGS.file_size:
           assert num_examples_processed==FLAGS.file_size, "num_examples_processed should be equal to %d"%FLAGS.file_size
