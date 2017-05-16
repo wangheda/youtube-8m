@@ -144,6 +144,7 @@ def inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batc
             start=True))
 
       while not coord.should_stop():
+        ids_val = None
         ids_val, labels_val, inputs_val, predictions_val = sess.run(fetches)
 
         video_ids.append(ids_val)
@@ -151,6 +152,12 @@ def inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batc
         video_inputs.append(inputs_val)
         video_predictions.append(predictions_val)
         num_examples_processed += len(ids_val)
+        ids_val = None
+
+        ids_shape = ids_val.shape[0]
+        inputs_shape = inputs_val.shape[0]
+        predictions_shape = predictions_val.shape[0]
+        assert ids_shape == inputs_shape == predictions_shape, "tensor ids(%d), inputs(%d) and predictions(%d) should have equal rows" % (ids_shape, inputs_shape, predictions_shape)
 
         if num_examples_processed >= FLAGS.file_size:
           assert num_examples_processed==FLAGS.file_size, "num_examples_processed should be equal to %d"%FLAGS.file_size
@@ -201,7 +208,7 @@ def inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batc
 
 
 def write_to_record(video_ids, video_labels, video_inputs, video_predictions, filenum, num_examples_processed):
-    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%03d.tfrecord' % filenum)
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%04d.tfrecord' % filenum)
     for i in range(num_examples_processed):
         video_id = video_ids[i]
         video_label = np.nonzero(video_labels[i,:])[0]
