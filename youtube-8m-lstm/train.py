@@ -377,6 +377,8 @@ def build_graph(reader,
           else:
             label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch) * (1.0 - p) \
                         + label_loss_fn.calculate_loss(predictions, support_predictions, distill_labels_batch, weights=video_weights_batch) * p
+        else:
+          label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch)
       else:
         if FLAGS.distillation_features and FLAGS.distillation_percent == 1:
           p = FLAGS.distillation_percent
@@ -388,6 +390,8 @@ def build_graph(reader,
           else:
             label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch) * (1.0 - p) \
                          + label_loss_fn.calculate_loss(predictions, distill_labels_batch, weights=video_weights_batch) * p
+        else:
+          label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
 
     tf.summary.histogram("model/predictions", predictions)
     tf.summary.scalar("label_loss", label_loss)
