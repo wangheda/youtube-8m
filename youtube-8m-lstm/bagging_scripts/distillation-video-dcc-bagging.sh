@@ -77,7 +77,7 @@ for i in {1..4}; do
       --input_noise_level=0.1 \
       --num_readers=4 \
       --num_epochs=6 \
-      --batch_size=1024
+      --batch_size=512
   fi
 
   # inference-pre-ensemble
