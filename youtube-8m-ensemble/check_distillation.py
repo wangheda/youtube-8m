@@ -100,10 +100,7 @@ def build_graph(all_readers,
             batch_size=batch_size))
 
     video_id_equal_tensors.append(tf.reduce_sum(tf.cast(tf.not_equal(original_video_id, video_id), dtype=tf.float32)))
-
-    if model_input_tensor is None:
-      model_input_tensor = model_input_raw
-    input_distance_tensors.append(tf.reduce_mean(tf.reduce_sum(tf.square(model_input_tensor - model_input_raw), axis=1)))
+    input_distance_tensors.append(tf.reduce_mean(tf.reduce_sum(tf.square(original_input - model_input_raw), axis=1)))
 
     labels_batch = tf.cast(labels_batch, dtype=tf.float32)
     x = model_input_raw

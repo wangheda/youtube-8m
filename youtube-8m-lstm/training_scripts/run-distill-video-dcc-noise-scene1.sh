@@ -19,13 +19,13 @@ CUDA_VISIBLE_DEVICES=0 python train.py \
 	--num_supports=18864 \
 	--support_loss_percent=0.05 \
 	--keep_checkpoint_every_n_hour=0.25 \
-	--base_learning_rate=0.01 \
+	--base_learning_rate=0.008 \
 	--data_augmenter=NoiseAugmenter \
 	--input_noise_level=0.1 \
   --reweight=True \
   --sample_vocab_file="resources/train.video_id.vocab" \
   --sample_freq_file="resources/train.video_id.freq" \
-	--num_readers=8 \
+	--num_readers=4 \
 	--num_epochs=6 \
-	--batch_size=1024
+	--batch_size=512
 

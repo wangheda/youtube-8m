@@ -301,6 +301,7 @@ def build_graph(reader,
             num_epochs=num_epochs))
     if FLAGS.distillation_features and FLAGS.distillation_type == 2:
       p = FLAGS.distillation_percent
+      print "distillation_percent =", p, "reforming labels"
       float_labels = tf.cast(labels_batch, dtype=tf.float32)
       sum_float_labels = tf.reduce_sum(float_labels, axis=1, keep_dims=True)
       sum_distill_labels = tf.reduce_sum(distill_labels_batch, axis=1, keep_dims=True) + 1e-6
@@ -365,7 +366,7 @@ def build_graph(reader,
         support_predictions = result["support_predictions"]
         tf.summary.histogram("model/support_predictions", support_predictions)
         print "support_predictions", support_predictions
-        if FLAGS.distillation_features and FLAGS.distillation_percent == 1:
+        if FLAGS.distillation_features and FLAGS.distillation_type == 1:
           p = FLAGS.distillation_percent
           print "distillation_percent =", p
           if p <= 0:
@@ -375,12 +376,16 @@ def build_graph(reader,
           else:
             label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch) * (1.0 - p) \
                         + label_loss_fn.calculate_loss(predictions, support_predictions, distill_labels_batch, weights=video_weights_batch) * p
+        elif FLAGS.distillation_features and FLAGS.distillation_type == 2:
+          print "using pure distillation loss"
+          label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, distill_labels_batch, weights=video_weights_batch)
         else:
+          print "using original loss"
           label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch)
       else:
-        if FLAGS.distillation_features and FLAGS.distillation_percent == 1:
+        if FLAGS.distillation_features and FLAGS.distillation_type == 1:
           p = FLAGS.distillation_percent
-          print "distillation_loss_percent =", p
+          print "distillation_percent =", p
           if p <= 0:
             label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
           elif p >= 1:
@@ -388,6 +393,8 @@ def build_graph(reader,
           else:
             label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch) * (1.0 - p) \
                          + label_loss_fn.calculate_loss(predictions, distill_labels_batch, weights=video_weights_batch) * p
+        elif FLAGS.distillation_features and FLAGS.distillation_type == 2:
+          label_loss = label_loss_fn.calculate_loss(predictions, distill_labels_batch, weights=video_weights_batch)
         else:
           label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
 
