@@ -1,6 +1,5 @@
-model=$1
-conf=$2
-part=$3
+conf=$1
+part=$2
 
 validate_path=/Youtube-8M/model_predictions/${part}
 validate_data_patterns=""
@@ -8,7 +7,7 @@ for d in $(cat $conf); do
   validate_data_patterns="${validate_path}/${d}/*.tfrecord${validate_data_patterns:+,$validate_data_patterns}"
 done
 echo "$validate_data_patterns"
-input_data_pattern="${validate_path}/model_input/*.tfrecord"
+input_data_pattern="/Youtube-8M/data/video/${part}/*.tfrecord"
 
 CUDA_VISIBLE_DEVICES=""  python check_video_id.py \
     --input_data_pattern=$input_data_pattern \
