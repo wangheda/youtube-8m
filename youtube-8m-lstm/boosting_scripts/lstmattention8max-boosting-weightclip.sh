@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GPU_NO=0
+GPU_NO=1
 # base_model or sub_model_1 or sub_model_2 or so on
 model_type="$1"
 
@@ -123,7 +123,7 @@ elif [[ $model_type =~ ^sub_model ]]; then
   done
 
 elif [[ $model_type =~ ^ensemble ]]; then
-  for i in {1..8}; do
+  for i in {1..2}; do
     sub_model_dir="${MODEL_DIR}/sub_model_${i}"
 
     # inference-pre-ensemble
