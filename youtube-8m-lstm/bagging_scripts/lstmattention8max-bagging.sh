@@ -1,6 +1,14 @@
 #!/bin/bash
+DEFAULT_GPU_ID=1
 
-GPU_ID=1
+if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
+  GPU_ID=$DEFAULT_GPU_ID
+  echo "set CUDA_VISIBLE_DEVICES to default('$GPU_ID')"
+else
+  GPU_ID=$CUDA_VISIBLE_DEVICES
+  echo "set CUDA_VISIBLE_DEVICES to external('$GPU_ID')"
+fi
+
 # base_model or sub_model_1 or sub_model_2 or so on
 model_type="$1"
 
