@@ -15,6 +15,7 @@
 """Binary for combine model output and model input into one set of files."""
 
 import os
+import sys
 import time
 import numpy
 import numpy as np
@@ -74,7 +75,7 @@ def get_input_data_tensors(reader,
     return tf.train.batch(
         eval_data,
         batch_size=batch_size,
-        capacity=batch_size,
+        capacity=4 * batch_size,
         allow_smaller_final_batch=True,
         enqueue_many=True)
 
@@ -93,7 +94,7 @@ def build_graph(input_reader, input_data_pattern,
     batch_size: How many examples to process at a time.
   """
 
-  video_ids_batch, model_inputs_batch, labels_batch, unused_num_frames = (
+  video_ids_batch, model_rgbs_batch, model_audios_batch, labels_batch, num_frames_batch = (
       get_input_data_tensors(
           input_reader,
           input_data_pattern,
@@ -104,18 +105,15 @@ def build_graph(input_reader, input_data_pattern,
           prediction_data_pattern,
           batch_size=batch_size))
 
-  video_ids_equal = tf.reduce_mean(tf.cast(tf.equal(video_ids_batch, video_ids_batch2), tf.float32))
-  labels_equal = tf.reduce_mean(tf.reduce_sum(tf.cast(tf.equal(labels_batch, labels_batch2), tf.float32), axis=1))
-
-  tf.add_to_collection("video_ids_equal", video_ids_equal)
-  tf.add_to_collection("labels_equal", labels_equal)
   tf.add_to_collection("video_ids_batch", video_ids_batch)
   tf.add_to_collection("labels_batch", tf.cast(labels_batch, tf.float32))
-  tf.add_to_collection("inputs_batch", model_inputs_batch)
+  tf.add_to_collection("rgbs_batch", model_rgbs_batch)
+  tf.add_to_collection("audios_batch", model_audios_batch)
   tf.add_to_collection("predictions_batch", model_predictions_batch)
+  tf.add_to_collection("num_frames_batch", num_frames_batch)
 
 
-def inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batch, video_ids_equal, labels_equal,
+def inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, predictions_batch, num_frames_batch,
                    output_dir, batch_size):
 
   with tf.Session() as sess:
@@ -123,14 +121,16 @@ def inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batc
     sess.run([tf.local_variables_initializer()])
 
     # Start the queue runners.
-    fetches = [video_ids_batch, labels_batch, inputs_batch, predictions_batch, video_ids_equal, labels_equal]
+    fetches = [video_ids_batch, labels_batch, rgbs_batch, audios_batch, predictions_batch, num_frames_batch]
     coord = tf.train.Coordinator()
     start_time = time.time()
 
     video_ids = []
     video_labels = []
-    video_inputs = []
+    video_rgbs = []
+    video_audios = []
     video_predictions = []
+    video_num_frames = []
     filenum = 0
     num_examples_processed = 0
     total_num_examples_processed = 0
@@ -150,57 +150,70 @@ def inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batc
 
       while not coord.should_stop():
         ids_val = None
-        ids_val, labels_val, inputs_val, predictions_val, ids_equal_val, labels_equal_val = sess.run(fetches)
-
-        print "ids equal = %f" % (ids_equal_val)
-        print "labels equal = %f" % (labels_equal_val)
+        ids_val, labels_val, rgbs_val, audios_val, predictions_val, num_frames_val = sess.run(fetches)
 
         video_ids.append(ids_val)
         video_labels.append(labels_val)
-        video_inputs.append(inputs_val)
+        video_rgbs.append(rgbs_val)
+        video_audios.append(audios_val)
         video_predictions.append(predictions_val)
+        video_num_frames.append(num_frames_val)
+
         num_examples_processed += len(ids_val)
 
         ids_shape = ids_val.shape[0]
-        inputs_shape = inputs_val.shape[0]
+        rgbs_shape = rgbs_val.shape[0]
+        audios_shape = audios_val.shape[0]
         predictions_shape = predictions_val.shape[0]
-        assert ids_shape == inputs_shape == predictions_shape, "tensor ids(%d), inputs(%d) and predictions(%d) should have equal rows" % (ids_shape, inputs_shape, predictions_shape)
+        assert ids_shape == rgbs_shape == predictions_shape, "tensor ids(%d), rgbs(%d) and predictions(%d) should have equal rows" % (ids_shape, rgbs_shape, predictions_shape)
 
         ids_val = None
+
+        now = time.time()
+        logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
 
         if num_examples_processed >= FLAGS.file_size:
           assert num_examples_processed==FLAGS.file_size, "num_examples_processed should be equal to %d"%FLAGS.file_size
           video_ids = np.concatenate(video_ids, axis=0)
           video_labels = np.concatenate(video_labels, axis=0)
-          video_inputs = np.concatenate(video_inputs, axis=0)
+          video_rgbs = np.concatenate(video_rgbs, axis=0)
+          video_audios = np.concatenate(video_audios, axis=0)
           video_predictions = np.concatenate(video_predictions, axis=0)
-          write_to_record(video_ids, video_labels, video_inputs, video_predictions, filenum, num_examples_processed)
+          video_num_frames = np.concatenate(video_num_frames, axis=0)
+
+          write_to_record(video_ids, video_labels, video_rgbs, video_audios, video_predictions, video_num_frames, filenum, num_examples_processed)
 
           video_ids = []
           video_labels = []
-          video_inputs = []
+          video_rgbs = []
+          video_audios = []
           video_predictions = []
+          video_num_frames = []
           filenum += 1
           total_num_examples_processed += num_examples_processed
 
           now = time.time()
-          logging.info("num examples processed: " + str(num_examples_processed) + " elapsed seconds: " + "{0:.2f}".format(now-start_time))
+          logging.info(str(num_examples_processed) + " examples written to file elapsed seconds: " + "{0:.2f}".format(now-start_time))
           num_examples_processed = 0
 
     except tf.errors.OutOfRangeError as e:
       if ids_val is not None:
         video_ids.append(ids_val)
         video_labels.append(labels_val)
-        video_inputs.append(inputs_val)
+        video_rgbs.append(rgbs_val)
+        video_audios.append(audios_val)
         video_predictions.append(predictions_val)
+        video_num_frames.append(num_frames_val)
         num_examples_processed += len(ids_val)
 
       if 0 < num_examples_processed <= FLAGS.file_size:
         video_ids = np.concatenate(video_ids, axis=0)
         video_labels = np.concatenate(video_labels, axis=0)
-        video_inputs = np.concatenate(video_inputs, axis=0)
+        video_rgbs = np.concatenate(video_rgbs, axis=0)
+        video_audios = np.concatenate(video_audios, axis=0)
         video_predictions = np.concatenate(video_predictions, axis=0)
-        write_to_record(video_ids, video_labels, video_inputs, video_predictions, filenum, num_examples_processed)
+        video_num_frames = np.concatenate(video_num_frames, axis=0)
+        write_to_record(video_ids, video_labels, video_rgbs, video_audios, video_predictions, video_num_frames, filenum, num_examples_processed)
         total_num_examples_processed += num_examples_processed
 
         now = time.time()
@@ -216,47 +229,41 @@ def inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batc
     coord.join(threads, stop_grace_period_secs=10)
 
 
-def write_to_record(video_ids, video_labels, video_inputs, video_predictions, filenum, num_examples_processed):
+def write_to_record(video_ids, video_labels, video_rgbs, video_audios, video_predictions, video_num_frames, filenum, num_examples_processed):
     writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%04d.tfrecord' % filenum)
     for i in range(num_examples_processed):
         video_id = video_ids[i]
         video_label = np.nonzero(video_labels[i,:])[0]
-        video_input = video_inputs[i,:]
+        video_rgb = video_rgbs[i,:]
+        video_audio = video_audios[i,:]
         video_prediction = video_predictions[i,:]
-        example = get_output_feature(video_id, video_label, video_input, video_prediction)
+        video_num_frame = video_num_frames[i]
+        example = get_output_feature(video_id, video_label, video_rgb, video_audio, video_prediction, video_num_frame)
         serialized = example.SerializeToString()
         writer.write(serialized)
     writer.close()
 
-def get_output_feature(video_id, video_label, video_input, video_prediction):
-    feature_maps = {'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[video_id])),
-                    'labels': tf.train.Feature(int64_list=tf.train.Int64List(value=video_label))}
-
-    input_feature_names = FLAGS.input_feature_names.split(",")
-    input_feature_sizes = map(int, FLAGS.input_feature_sizes.split(","))
-
-    input_feature_start = 0
-    for i in range(len(input_feature_names)):
-        feature_maps[input_feature_names[i]] = tf.train.Feature(
-            float_list=tf.train.FloatList(
-                value=video_input[
-                    input_feature_start : 
-                    input_feature_start + input_feature_sizes[i]]))
-        input_feature_start += input_feature_sizes[i]
+def get_output_feature(video_id, video_label, video_rgb, video_audio, video_prediction, video_num_frame):
+    example = tf.train.SequenceExample()
+    example.context.feature["video_id"].bytes_list.value.append(video_id)
+    for l in video_label:
+      example.context.feature["labels"].int64_list.value.append(l)
 
     prediction_feature_names = FLAGS.prediction_feature_names.split(",")
     prediction_feature_sizes = map(int, FLAGS.prediction_feature_sizes.split(","))
 
-    prediction_feature_start = 0
+    s = 0
     for i in range(len(prediction_feature_names)):
-        feature_maps[prediction_feature_names[i]] = tf.train.Feature(
-            float_list=tf.train.FloatList(
-                value=video_prediction[
-                    prediction_feature_start : 
-                    prediction_feature_start + prediction_feature_sizes[i]]))
-        prediction_feature_start += prediction_feature_sizes[i]
+        for f in video_prediction[s: s + prediction_feature_sizes[i]]:
+          example.context.feature[prediction_feature_names[i]].float_list.value.append(f)
+        s += prediction_feature_sizes[i]
 
-    example = tf.train.Example(features=tf.train.Features(feature=feature_maps))
+    for rgb in video_rgb[:video_num_frame]:
+      example.feature_lists.feature_list["rgb"].feature.add().bytes_list.value.append(rgb)
+
+    for audio in video_audio[:video_num_frame]:
+      example.feature_lists.feature_list["audio"].feature.add().bytes_list.value.append(audio)
+
     return example
 
 def main(unused_argv):
@@ -273,7 +280,7 @@ def main(unused_argv):
     # convert feature_names and feature_sizes to lists of values
     input_feature_names, input_feature_sizes = utils.GetListOfFeatureNamesAndSizes(
         FLAGS.input_feature_names, FLAGS.input_feature_sizes)
-    input_reader = readers.EnsembleReader(
+    input_reader = readers.EnsembleFrameReader(
         feature_names=input_feature_names, 
         feature_sizes=input_feature_sizes)
 
@@ -292,14 +299,14 @@ def main(unused_argv):
 
     logging.info("built evaluation graph")
 
-    video_ids_equal = tf.get_collection("video_ids_equal")[0]
-    labels_equal = tf.get_collection("labels_equal")[0]
     video_ids_batch = tf.get_collection("video_ids_batch")[0]
     labels_batch = tf.get_collection("labels_batch")[0]
-    inputs_batch = tf.get_collection("inputs_batch")[0]
+    rgbs_batch = tf.get_collection("rgbs_batch")[0]
+    audios_batch = tf.get_collection("audios_batch")[0]
     predictions_batch = tf.get_collection("predictions_batch")[0]
+    num_frames_batch = tf.get_collection("num_frames_batch")[0]
 
-    inference_loop(video_ids_batch, labels_batch, inputs_batch, predictions_batch, video_ids_equal, labels_equal,
+    inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, predictions_batch, num_frames_batch,
                    FLAGS.output_dir, FLAGS.batch_size)
   
 if __name__ == "__main__":

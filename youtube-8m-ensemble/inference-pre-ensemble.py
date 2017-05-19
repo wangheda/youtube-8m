@@ -234,7 +234,7 @@ def inference_loop(video_id_batch, prediction_batch,
 
 
 def write_to_record(video_ids, video_labels, video_features, filenum, num_examples_processed):
-    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%03d.tfrecord' % filenum)
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%04d.tfrecord' % filenum)
     for i in range(num_examples_processed):
         video_id = video_ids[i]
         video_label = np.nonzero(video_labels[i,:])[0]

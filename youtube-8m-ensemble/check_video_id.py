@@ -184,7 +184,7 @@ def check_video_id():
     input_data_pattern = None
     if FLAGS.input_data_pattern is not None:
       input_reader = readers.EnsembleReader(
-          feature_names=["input"], feature_sizes=[1024+128])
+          feature_names=["mean_rgb","mean_audio"], feature_sizes=[1024,128])
       input_data_pattern = FLAGS.input_data_pattern
 
     if FLAGS.eval_data_patterns is "":

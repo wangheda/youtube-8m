@@ -10,7 +10,7 @@ for d in $(cat $conf); do
 done
 echo "$test_data_patterns"
 
-CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
+python inference-pre-ensemble.py \
 	      --output_dir="/Youtube-8M/model_predictions/${part}/${model}" \
         --model_checkpoint_path="../model/${model}/model.ckpt-0" \
         --input_data_patterns="$test_data_patterns" \
