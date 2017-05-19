@@ -1,4 +1,13 @@
 #!/bin/bash
+DEFAULT_GPU_ID=0
+
+if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
+  GPU_ID=$DEFAULT_GPU_ID
+  echo "set CUDA_VISIBLE_DEVICES to default('$GPU_ID')"
+else
+  GPU_ID=$CUDA_VISIBLE_DEVICES
+  echo "set CUDA_VISIBLE_DEVICES to external('$GPU_ID')"
+fi
 
 # base_model or sub_model_1 or sub_model_2 or so on
 model_type="$1"
@@ -38,7 +47,7 @@ if [ $model_type == "base_model" ]; then
   mkdir -p $base_model_dir
 
   for j in 1 2; do 
-    CUDA_VISIBLE_DEVICES=0 python train.py \
+    CUDA_VISIBLE_DEVICES="$GPU_ID" python train.py \
       --train_dir="$base_model_dir" \
       --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
       --frame_features=True \
@@ -76,7 +85,7 @@ elif [[ $model_type =~ ^sub_model ]]; then
         --output_freq_file="${sub_model_dir}/train.video_id.freq"
 
     # train N models with re-weighted samples
-    CUDA_VISIBLE_DEVICES=0 python train.py \
+    CUDA_VISIBLE_DEVICES="$GPU_ID" python train.py \
       --train_dir="$sub_model_dir" \
       --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
       --frame_features=True \
@@ -104,7 +113,7 @@ elif [[ $model_type =~ ^sub_model ]]; then
   for part in test ensemble_validate ensemble_train; do
     output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/${model_type}"
     if [ ! -d $output_dir ]; then
-      CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
+      CUDA_VISIBLE_DEVICES="$GPU_ID" python inference-pre-ensemble.py \
         --output_dir=$output_dir \
         --train_dir="${sub_model_dir}" \
         --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
