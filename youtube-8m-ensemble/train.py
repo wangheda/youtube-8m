@@ -51,6 +51,9 @@ if __name__ == "__main__":
       "Which architecture to use for the model. Models are defined "
       "in models.py.")
   flags.DEFINE_bool(
+      "multitask", False,
+      "Whether to consider support_predictions")
+  flags.DEFINE_bool(
       "start_new_model", False,
       "If set, this will not resume from a checkpoint and will instead create a"
       " new model instance.")
@@ -77,6 +80,13 @@ if __name__ == "__main__":
                        "halting training.")
   flags.DEFINE_float("keep_checkpoint_every_n_hours", 0.1,
                        "How many hours before saving a new checkpoint")
+ 
+  flags.DEFINE_bool("reweight", False,
+                    "Whether to load model weight from file.")
+  flags.DEFINE_string("sample_vocab_file", "",
+                      "Where to load video_id vocabulary.")
+  flags.DEFINE_string("sample_freq_file", "",
+                      "Where to load sample frequency.")
  
   # Other flags.
   flags.DEFINE_string("optimizer", "AdamOptimizer",
@@ -127,6 +137,38 @@ def find_class_by_name(name, modules):
   modules = [getattr(module, name, None) for module in modules]
   return next(a for a in modules if a)
 
+def get_video_weights_array():
+  weight_lines = open(FLAGS.sample_freq_file).readlines()
+  weights = numpy.array(map(float, weight_lines))
+  weights = weights.reshape([len(weight_lines)])
+  return weights, len(weight_lines)
+
+def optional_assign_weights(sess, weights_input, weights_assignment):
+  if weights_input is not None:
+    weights, length = get_video_weights_array()
+    _ = sess.run(weights_assignment, feed_dict={weights_input: weights})
+    print "Assigned weights from %s" % FLAGS.sample_freq_file
+  else:
+    print "Collection weights_input not found"
+
+def get_video_weights(video_id_batch):
+  video_id_to_index = tf.contrib.lookup.string_to_index_table_from_file(
+                          vocabulary_file=FLAGS.sample_vocab_file, default_value=0)
+  indexes = video_id_to_index.lookup(video_id_batch)
+  weights, length = get_video_weights_array()
+  weights_input = tf.placeholder(tf.float32, shape=[length], name="sample_weights_input")
+  weights_tensor = tf.get_variable("sample_weights",
+                               shape=[length],
+                               trainable=False,
+                               dtype=tf.float32,
+                               initializer=tf.constant_initializer(weights))
+  weights_assignment = tf.assign(weights_tensor, weights_input)
+
+  tf.add_to_collection("weights_input", weights_input)
+  tf.add_to_collection("weights_assignment", weights_assignment)
+
+  video_weight_batch = tf.nn.embedding_lookup(weights_tensor, indexes)
+  return video_weight_batch
 
 def build_graph(all_readers,
                 all_train_data_patterns,
@@ -233,7 +275,18 @@ def build_graph(all_readers,
     if "loss" in result.keys():
       label_loss = result["loss"]
     else:
-      label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+      video_weights_batch = None
+      if FLAGS.reweight:
+        video_weights_batch = get_video_weights(video_id)
+      if FLAGS.multitask:
+        print "using multitask loss"
+        support_predictions = result["support_predictions"]
+        tf.summary.histogram("model/support_predictions", support_predictions)
+        print "support_predictions", support_predictions
+        label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch)
+      else:
+        print "using original loss"
+        label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
 
     tf.summary.histogram("model/predictions", predictions)
     tf.summary.scalar("label_loss", label_loss)
@@ -343,6 +396,11 @@ class Trainer(object):
           keep_prob_tensor = tf.get_collection("keep_prob")[0]
         if FLAGS.noise_level > 0:
           noise_level_tensor = tf.get_collection("noise_level")[0]
+        if FLAGS.reweight:
+          weights_input, weights_assignment = None, None
+          if len(tf.get_collection("weights_input")) > 0:
+            weights_input = tf.get_collection("weights_input")[0]
+            weights_assignment = tf.get_collection("weights_assignment")[0]
 
     sv = tf.train.Supervisor(
         graph,
@@ -356,6 +414,10 @@ class Trainer(object):
 
     logging.info("%s: Starting managed session.", task_as_string(self.task))
     with sv.managed_session(target, config=self.config) as sess:
+
+      # re-assign weights
+      if FLAGS.reweight:
+        optional_assign_weights(sess, weights_input, weights_assignment)
 
       try:
         logging.info("%s: Entering training loop.", task_as_string(self.task))

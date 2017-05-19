@@ -414,6 +414,7 @@ class YT8MFrameDistillationFeatureReader(BaseReader):
         tf.sparse_to_dense(contexts["labels"].values, (self.num_classes,), 1,
             validate_indices=False),
         tf.bool))
+    predictions = contexts["predictions"]
 
     # loads (potentially) different types of features and concatenates them
     num_features = len(self.feature_names)
@@ -451,7 +452,8 @@ class YT8MFrameDistillationFeatureReader(BaseReader):
     batch_video_matrix = tf.expand_dims(video_matrix, 0)
     batch_labels = tf.expand_dims(labels, 0)
     batch_frames = tf.expand_dims(num_frames, 0)
+    batch_predictions = tf.expand_dims(predictions, 0)
 
-    return batch_video_ids, batch_video_matrix, batch_labels, batch_frames, features["predictions"]
+    return batch_video_ids, batch_video_matrix, batch_labels, batch_frames, batch_predictions
 
 
