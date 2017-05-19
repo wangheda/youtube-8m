@@ -1,7 +1,7 @@
 model=$1
 conf=$2
 part=$3
-checkpoint=2202
+checkpoint=$4
 test_path=/Youtube-8M/model_predictions/${part}
 
 test_data_patterns=""

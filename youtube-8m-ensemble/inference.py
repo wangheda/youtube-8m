@@ -37,18 +37,19 @@ if __name__ == "__main__":
   flags.DEFINE_string(
       "input_data_patterns", "",
       "File globs defining the evaluation dataset in tensorflow.SequenceExample format.")
+  flags.DEFINE_string(
+      "input_data_pattern", None,
+      "File globs for original model input.")
   flags.DEFINE_string("feature_names", "predictions", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "4716", "Length of the feature vectors.")
 
   # Model flags.
   flags.DEFINE_string(
-      "model", "MatrixRegressionModel",
+      "model", "LogisticModel",
       "Which architecture to use for the model.")
   flags.DEFINE_integer("batch_size", 256,
                        "How many examples to process per batch.")
-  flags.DEFINE_string("label_loss", "CrossEntropyLoss",
-                      "Loss computed on validation data")
 
   # Other flags.
   flags.DEFINE_boolean("run_once", True, "Whether to run eval only once.")
@@ -72,8 +73,8 @@ def find_class_by_name(name, modules):
 
 
 def get_input_data_tensors(reader,
-                                 data_pattern,
-                                 batch_size=256):
+                           data_pattern,
+                           batch_size=256):
   logging.info("Using batch size of " + str(batch_size) + " for evaluation.")
   with tf.name_scope("eval_input"):
     files = gfile.Glob(data_pattern)
@@ -93,9 +94,10 @@ def get_input_data_tensors(reader,
 
 
 def build_graph(all_readers,
-                model,
                 all_data_patterns,
-                label_loss_fn,
+                input_reader,
+                input_data_pattern,
+                model,
                 batch_size=256):
   """Creates the Tensorflow graph for evaluation.
 
@@ -104,8 +106,6 @@ def build_graph(all_readers,
     model: The core model (e.g. logistic or neural net). It should inherit
            from BaseModel.
     all_data_patterns: glob path to the evaluation data files.
-    label_loss_fn: What kind of loss to apply to the model. It should inherit
-                from BaseLoss.
     batch_size: How many examples to process at a time.
   """
 
@@ -125,6 +125,15 @@ def build_graph(all_readers,
     if video_id_batch is None:
       video_id_batch = unused_video_id
     model_input_raw_tensors.append(tf.expand_dims(model_input_raw, axis=2))
+
+  original_input = None
+  if input_data_pattern is not None:
+    unused_video_id, original_input, unused_labels_batch, unused_num_frames = (
+        get_input_data_tensors(
+            input_reader,
+            input_data_pattern,
+            batch_size=batch_size))
+
   model_input = tf.concat(model_input_raw_tensors, axis=2)
   labels_batch = labels_batch_tensor
 
@@ -132,22 +141,18 @@ def build_graph(all_readers,
     result = model.create_model(model_input,
                                 labels=labels_batch,
                                 vocab_size=reader.num_classes,
+                                original_input=original_input,
                                 is_training=False)
     predictions = result["predictions"]
-    if "loss" in result.keys():
-      label_loss = result["loss"]
-    else:
-      label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
 
   tf.add_to_collection("global_step", global_step)
-  tf.add_to_collection("loss", label_loss)
   tf.add_to_collection("predictions", predictions)
   tf.add_to_collection("input_batch", model_input)
   tf.add_to_collection("video_id_batch", video_id_batch)
   tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
 
 
-def inference_loop(video_id_batch, prediction_batch, label_batch, loss,
+def inference_loop(video_id_batch, prediction_batch, label_batch,
               saver, out_file_location):
 
   top_k = FLAGS.top_k
@@ -218,8 +223,14 @@ def inference():
           feature_names=feature_names, feature_sizes=feature_sizes)
       all_readers.append(reader)
 
+    input_reader = None
+    input_data_pattern = None
+    if FLAGS.input_data_pattern is not None:
+      input_reader = readers.EnsembleReader(
+          feature_names=["input"], feature_sizes=[1024+128])
+      input_data_pattern = FLAGS.input_data_pattern
+
     model = find_class_by_name(FLAGS.model, [ensemble_level_models])()
-    label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
 
     if FLAGS.input_data_patterns is "":
       raise IOError("'input_data_patterns' was not specified. " +
@@ -227,20 +238,20 @@ def inference():
 
     build_graph(
         all_readers=all_readers,
-        model=model,
         all_data_patterns=all_patterns,
-        label_loss_fn=label_loss_fn,
+        input_reader=input_reader,
+        input_data_pattern=input_data_pattern,
+        model=model,
         batch_size=FLAGS.batch_size)
+
     logging.info("built evaluation graph")
     video_id_batch = tf.get_collection("video_id_batch")[0]
     prediction_batch = tf.get_collection("predictions")[0]
     label_batch = tf.get_collection("labels")[0]
-    loss = tf.get_collection("loss")[0]
 
     saver = tf.train.Saver(tf.global_variables())
 
-    inference_loop(video_id_batch, prediction_batch,
-                   label_batch, loss,
+    inference_loop(video_id_batch, prediction_batch, label_batch,
                    saver, FLAGS.output_file)
 
 def main(unused_argv):
