@@ -18,7 +18,7 @@ for checkpoint in $(cd $MODEL_DIR && python ${DIR}/training_utils/select.py $EVE
         echo $checkpoint;
         if [ $checkpoint -gt $start ]; then
                 echo $checkpoint;
-                CUDA_VISIBLE_DEVICES=0 python eval.py \
+                python eval.py \
                     --model_checkpoint_path="../model/${model}/model.ckpt-${checkpoint}" \
                     --train_dir="../model/${model}" \
                     --model="MatrixRegressionModel" \

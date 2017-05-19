@@ -127,26 +127,29 @@ elif [[ $model_type =~ ^ensemble ]]; then
 
     # inference-pre-ensemble
     for part in test ensemble_validate ensemble_train; do
-      CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble.py \
-        --output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/sub_model_${i}" \
-        --train_dir="${sub_model_dir}" \
-        --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
-        --frame_features=True \
-        --feature_names="rgb,audio" \
-        --feature_sizes="1024,128" \
-        --model=LstmParallelFinaloutputModel \
-        --lstm_cells="1024,128" \
-        --moe_num_mixtures=8 \
-        --rnn_swap_memory=True \
-        --batch_size=32 \
-        --file_size=4096
+      output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/sub_model_${i}"
+      if [ ! -d $output_dir ]; then
+        CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
+          --output_dir="$output_dir" \
+          --train_dir="${sub_model_dir}" \
+          --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
+          --frame_features=True \
+          --feature_names="rgb,audio" \
+          --feature_sizes="1024,128" \
+          --model=LstmParallelFinaloutputModel \
+          --lstm_cells="1024,128" \
+          --moe_num_mixtures=8 \
+          --rnn_swap_memory=True \
+          --batch_size=64 \
+          --file_size=4096
+      fi
     done
   done
 
   # on ensemble server
-  cd ../youtube-8m-ensemble
-  bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
-  bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+  #cd ../youtube-8m-ensemble
+  #bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+  #bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
   #bash ensemble_scripts/infer-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 fi
 

@@ -8,7 +8,7 @@ for d in $(cat $conf); do
 done
 echo "$train_data_patterns"
 
-CUDA_VISIBLE_DEVICES=0 python train.py \
+python train.py \
       --train_dir="../model/${model}" \
       --train_data_patterns="$train_data_patterns" \
       --model=MatrixRegressionModel \
