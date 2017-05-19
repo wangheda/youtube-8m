@@ -53,6 +53,12 @@ if __name__ == "__main__":
       "Otherwise, --eval_data_pattern must be aggregated video-level "
       "features. The model must also be set appropriately (i.e. to read 3D "
       "batches VS 4D batches.")
+  flags.DEFINE_bool(
+      "norm", True,
+      "If set, then --train_data_pattern must be frame-level features. "
+      "Otherwise, --train_data_pattern must be aggregated video-level "
+      "features. The model must also be set appropriately (i.e. to read 3D "
+      "batches VS 4D batches.")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Options include 'Logistic', "
@@ -147,7 +153,10 @@ def build_graph(reader,
   feature_dim = len(model_input_raw.get_shape()) - 1
 
   # Normalize input features.
-  model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+  if FLAGS.norm:
+      model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+  else:
+      model_input = model_input_raw
 
   with tf.name_scope("model"):
     result = model.create_model(model_input,
@@ -193,7 +202,8 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
   """
 
   global_step_val = -1
-  with tf.Session() as sess:
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+  with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     if FLAGS.model_checkpoint_path:
       checkpoint = FLAGS.model_checkpoint_path
     else:

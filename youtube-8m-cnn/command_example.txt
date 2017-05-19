@@ -1,4 +1,33 @@
 CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/video/train/*.tfrecord' --train_dir=/home/zhangt/yt8m/video_level_moemix4_model --model='MoeMix4Model' --feature_names="mean_rgb, mean_audio" --feature_sizes="1024, 128" --moe_num_mixtures=4 --moe_layers=3 --class_size=100
+
 CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/video/train/*.tfrecord' --train_dir=/home/zhangt/yt8m/video_level_moemix4_weight_model --model='MoeMix4Model' --feature_names="mean_rgb, mean_audio" --feature_sizes="1024, 128" --moe_num_mixtures=4 --moe_layers=3 --class_size=100 --loss_function="loss_weight"
+
 CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/video/train/*.tfrecord' --train_dir=/home/zhangt/yt8m/video_level_moesoftmax_model --model='MoeSoftmaxModel' --feature_names="mean_rgb, mean_audio" --feature_sizes="1024, 128" --moe_num_mixtures=4 --moe_layers=3 --class_size=100
+
 CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/video/train/*.tfrecord' --train_dir=/home/zhangt/yt8m/video_level_moeknowledge_model --model='MoeKnowledgeModel' --feature_names="mean_rgb, mean_audio" --feature_sizes="1024, 128" --moe_num_mixtures=4 --moe_layers=3 --class_size=100
+
+CUDA_VISIBLE_DEVICES=1 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_vision_model --model='LstmVisionModel' --video_level_classifier_model=MoeModel --moe_num_mixtures=8 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_gate_model --model='LstmGateModel' --video_level_classifier_model=MoeModel --moe_num_mixtures=8 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_glu_model --model='LstmGluModel' --video_level_classifier_model=MoeModel --moe_num_mixtures=8 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=1 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_linearoutput_model --model='LstmLinearOutputModel' --video_level_classifier_model=MoeModel --moe_num_mixtures=8 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=1 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_quickmemory_model --model='LstmQuickMemoryModel' --video_level_classifier_model=MoeModel --moe_num_mixtures=8 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=1 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_linearoutput2_model --model='LstmLinearOutput2Model' --video_level_classifier_model=MoeModel --moe_num_mixtures=8 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_nooutput_model --model='LstmNoOutputModel' --video_level_classifier_model=MoeModel --moe_num_mixtures=8 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_glu2_model --model='LstmGlu2Model' --video_level_classifier_model=MoeModel --moe_num_mixtures=8 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=1 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_biglu_model --model='LstmBigluModel' --moe_num_mixtures=4 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=1 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_biglu2_model --model='LstmBiglu2Model' --moe_num_mixtures=4 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_cnn_multiscale_model --model='CnnMultiscaleModel' --moe_num_extend=4 --moe_num_mixtures=4 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_multiscale_model --model='LstmMultiscaleModel' --moe_num_extend=4 --moe_num_mixtures=4 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.001
+
+CUDA_VISIBLE_DEVICES=0 python train.py --train_data_pattern='/Youtube-8M/data/frame/train/*.tfrecord' --frame_features=True --train_dir=/home/zhangt/yt8m/frame_level_lstm_multiscale2_model --model='LstmMultiscale2Model' --moe_num_extend=4 --moe_num_mixtures=4 --feature_names="rgb, audio" --feature_sizes="1024, 128" --batch_size=128 --base_learning_rate=0.002
