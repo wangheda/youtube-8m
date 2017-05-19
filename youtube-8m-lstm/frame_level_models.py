@@ -68,6 +68,10 @@ flags.DEFINE_integer("deep_cnn_base_size", 128,
 flags.DEFINE_integer("lstm_look_back", 3,
                      "how many adjacent input for a cell to look at")
 
+flags.DEFINE_integer("lstm_attentions", 8, "Attention size in lstm_attention_max_pooling_model.")
+
+flags.DEFINE_integer("positional_embedding_size", 32, "Positional embedding dimension use in lstm_positional_attention_max_pooling_model.")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:

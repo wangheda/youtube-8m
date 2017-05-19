@@ -1,4 +1,13 @@
 #!/bin/bash
+DEFAULT_GPU_ID=1
+
+if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
+  GPU_ID=$DEFAULT_GPU_ID
+  echo "set CUDA_VISIBLE_DEVICES to default('$GPU_ID')"
+else
+  GPU_ID=$CUDA_VISIBLE_DEVICES
+  echo "set CUDA_VISIBLE_DEVICES to external('$GPU_ID')"
+fi
 
 # base_model or sub_model_1 or sub_model_2 or so on
 model_type="$1"
@@ -37,7 +46,7 @@ if [ $model_type == "base_model" ]; then
   rm ${MODEL_DIR}/ensemble.conf
   mkdir -p $base_model_dir
 
-  CUDA_VISIBLE_DEVICES=1 python train.py \
+  CUDA_VISIBLE_DEVICES="$GPU_ID" python train.py \
     --train_dir="$base_model_dir" \
     --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
     --frame_features=True \
@@ -60,44 +69,54 @@ elif [[ $model_type =~ ^sub_model ]]; then
 
   # sub model
   sub_model_dir="${MODEL_DIR}/${model_type}"
-  cp -r $base_model_dir $sub_model_dir
 
-  # generate freq file
-  python training_utils/sample_freq.py \
-      --video_id_file="$vocab_file" \
-      --output_freq_file="${sub_model_dir}/train.video_id.freq"
+  if [ ! -d $sub_model_dir ]; then
+    cp -r $base_model_dir $sub_model_dir
 
-  # train N models with re-weighted samples
-  CUDA_VISIBLE_DEVICES=1 python train-with-rebuild.py \
-    --train_dir="$sub_model_dir" \
-    --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
-    --frame_features=True \
-    --feature_names="rgb,audio" \
-    --feature_sizes="1024,128" \
-    --reweight=True \
-    --sample_vocab_file="resources/train.video_id.vocab" \
-    --sample_freq_file="${sub_model_dir}/train.video_id.freq" \
-    --model=LstmParallelFinaloutputModel \
-    --lstm_cells="1024,128" \
-    --moe_num_mixtures=8 \
-    --rnn_swap_memory=True \
-    --base_learning_rate=0.0008 \
-    --num_readers=2 \
-    --num_epochs=1 \
-    --batch_size=128 \
-    --keep_checkpoint_every_n_hour=72.0 
+    # generate freq file
+    python training_utils/sample_freq.py \
+        --video_id_file="$vocab_file" \
+        --output_freq_file="${sub_model_dir}/train.video_id.freq"
 
-  # inference-pre-ensemble
-  for part in test ensemble_validate ensemble_train; do
-    CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble.py \
-      --output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/${model_type}" \
-      --train_dir="${sub_model_dir}" \
-      --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
+    # train N models with re-weighted samples
+    CUDA_VISIBLE_DEVICES="$GPU_ID" python train-with-rebuild.py \
+      --train_dir="$sub_model_dir" \
+      --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
       --frame_features=True \
       --feature_names="rgb,audio" \
       --feature_sizes="1024,128" \
-      --batch_size=32 \
-      --file_size=4096
+      --reweight=True \
+      --sample_vocab_file="resources/train.video_id.vocab" \
+      --sample_freq_file="${sub_model_dir}/train.video_id.freq" \
+      --model=LstmParallelFinaloutputModel \
+      --lstm_cells="1024,128" \
+      --moe_num_mixtures=8 \
+      --rnn_swap_memory=True \
+      --base_learning_rate=0.0008 \
+      --num_readers=4 \
+      --num_epochs=1 \
+      --batch_size=128 \
+      --keep_checkpoint_every_n_hour=72.0 
+  fi
+
+  # inference-pre-ensemble
+  for part in test ensemble_validate ensemble_train; do
+    output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/${model_type}"
+    if [ ! -d $output_dir ]; then
+      CUDA_VISIBLE_DEVICES="$GPU_ID" python inference-pre-ensemble.py \
+        --output_dir=$output_dir \
+        --train_dir="${sub_model_dir}" \
+        --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
+        --frame_features=True \
+        --feature_names="rgb,audio" \
+        --feature_sizes="1024,128" \
+        --batch_size=32 \
+        --model=LstmParallelFinaloutputModel \
+        --lstm_cells="1024,128" \
+        --moe_num_mixtures=8 \
+        --rnn_swap_memory=True \
+        --file_size=4096
+    fi
   done
 
   echo "${model_name}/${model_type}" >> ${MODEL_DIR}/ensemble.conf

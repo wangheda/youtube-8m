@@ -244,7 +244,7 @@ class MultiTaskLoss(BaseLoss):
       vm = tf.get_variable("vm", shape = [num_classes, num_verticals], 
                            trainable=False, initializer=vm_init)
       vertical_labels = tf.matmul(float_labels, vm)
-      return vertical_labels
+      return tf.cast(vertical_labels > 0.2, tf.float32)
     elif support_type == "frequent":
       num_frequents = FLAGS.num_frequents
       frequent_labels = tf.slice(labels, begin=[0, 0], size=[-1, num_frequents])
@@ -272,7 +272,7 @@ class MultiTaskCrossEntropyLoss(MultiTaskLoss):
   """Calculate the loss between the predictions and labels.
   """
   def calculate_loss(self, predictions, support_predictions, labels, **unused_params):
-    support_labels = tf.cast(self.get_support(labels) > 0, dtype=tf.float32)
+    support_labels = self.get_support(labels)
     ce_loss_fn = CrossEntropyLoss()
     cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
     cross_entropy_loss2 = ce_loss_fn.calculate_loss(support_predictions, support_labels, **unused_params)

@@ -129,10 +129,10 @@ def find_class_by_name(name, modules):
 
 
 def build_graph(all_readers,
+                all_train_data_patterns,
                 input_reader,
                 input_data_pattern,
                 model,
-                all_train_data_patterns,
                 label_loss_fn=losses.CrossEntropyLoss(),
                 batch_size=256,
                 base_learning_rate=0.01,
@@ -497,12 +497,12 @@ class Trainer(object):
     optimizer_class = find_class_by_name(FLAGS.optimizer, [tf.train])
 
     build_graph(all_readers=all_readers,
+                all_train_data_patterns=all_patterns,
                 input_reader=input_reader,
                 input_data_pattern=input_data_pattern,
                 model=model,
                 optimizer_class=optimizer_class,
                 clip_gradient_norm=FLAGS.clip_gradient_norm,
-                all_train_data_patterns=all_patterns,
                 label_loss_fn=label_loss_fn,
                 base_learning_rate=FLAGS.base_learning_rate,
                 learning_rate_decay=FLAGS.learning_rate_decay,

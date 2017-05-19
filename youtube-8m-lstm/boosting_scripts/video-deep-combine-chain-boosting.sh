@@ -1,4 +1,13 @@
 #!/bin/bash
+DEFAULT_GPU_ID=0
+
+if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
+  GPU_ID=$DEFAULT_GPU_ID
+  echo "set CUDA_VISIBLE_DEVICES to default('$GPU_ID')"
+else
+  GPU_ID=$CUDA_VISIBLE_DEVICES
+  echo "set CUDA_VISIBLE_DEVICES to external('$GPU_ID')"
+fi
 
 # base_model or sub_model_1 or sub_model_2 or so on
 #model_type="$1"
@@ -35,7 +44,7 @@ base_model_dir="${MODEL_DIR}/base_model"
 # base model (4 epochs)
 mkdir -p $base_model_dir
 for j in {1..2}; do 
-  CUDA_VISIBLE_DEVICES=0 python train.py \
+  CUDA_VISIBLE_DEVICES="$GPU_ID" python train.py \
     --train_dir="$base_model_dir" \
     --train_data_pattern="/Youtube-8M/data/video/train/train*" \
     --frame_features=False \
@@ -71,7 +80,7 @@ for i in {1..8}; do
 
   echo "training model #$i, reweighting with $last_freq_file"
   # train N models with re-weighted samples
-  CUDA_VISIBLE_DEVICES=0 python train.py \
+  CUDA_VISIBLE_DEVICES="$GPU_ID" python train.py \
     --train_dir="$sub_model_dir" \
     --train_data_pattern="/Youtube-8M/data/video/train/train*" \
     --frame_features=False \
@@ -99,7 +108,7 @@ for i in {1..8}; do
 
   # inference-pre-ensemble
   for part in test ensemble_validate ensemble_train; do
-    CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
+    CUDA_VISIBLE_DEVICES="$GPU_ID" python inference-pre-ensemble.py \
       --output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/sub_model_$i" \
       --train_dir="${sub_model_dir}" \
       --input_data_pattern="/Youtube-8M/data/video/${part}/*.tfrecord" \
@@ -111,7 +120,7 @@ for i in {1..8}; do
   done
 
   # get error mapping
-  CUDA_VISIBLE_DEVICES=0 python inference-sample-error.py \
+  CUDA_VISIBLE_DEVICES="$GPU_ID" python inference-sample-error.py \
     --output_file="${sub_model_dir}/train.video_id.error" \
     --train_dir="${sub_model_dir}" \
     --input_data_pattern="/Youtube-8M/data/video/train/*.tfrecord" \
@@ -137,7 +146,7 @@ for i in {1..8}; do
 done
 
 cd ../youtube-8m-ensemble
-bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
-bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
-#bash ensemble_scripts/infer-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+#CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/infer-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 
