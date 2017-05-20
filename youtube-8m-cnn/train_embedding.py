@@ -18,9 +18,10 @@ import os
 import time
 
 import eval_util
-import losses
-import ensemble_level_models
+import losses_embedding
+import labels_embedding
 import readers
+import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow import app
@@ -36,30 +37,41 @@ if __name__ == "__main__":
   flags.DEFINE_string("train_dir", "/tmp/yt8m_model/",
                       "The directory to save the model files in.")
   flags.DEFINE_string(
-      "train_data_patterns", "",
-      "Multiple file globs for the training dataset.")
-  flags.DEFINE_string(
-      "input_data_pattern", None,
-      "File globs for original model input.")
-  flags.DEFINE_string("feature_names", "predictions", "Name of the feature "
+      "train_data_pattern", "",
+      "File glob for the training dataset. If the files refer to Frame Level "
+      "features (i.e. tensorflow.SequenceExample), then set --reader_type "
+      "format. The (Sequence)Examples are expected to have 'rgb' byte array "
+      "sequence feature as well as a 'labels' int64 context feature.")
+  flags.DEFINE_string("feature_names", "mean_rgb", "Name of the feature "
                       "to use for training.")
-  flags.DEFINE_string("feature_sizes", "4716", "Length of the feature vectors.")
+  flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
 
   # Model flags.
+  flags.DEFINE_bool(
+      "frame_features", False,
+      "If set, then --train_data_pattern must be frame-level features. "
+      "Otherwise, --train_data_pattern must be aggregated video-level "
+      "features. The model must also be set appropriately (i.e. to read 3D "
+      "batches VS 4D batches.")
+  flags.DEFINE_bool(
+      "frame_only", False,
+      "If set, then --train_data_pattern must be frame-level features. "
+      "Otherwise, --train_data_pattern must be aggregated video-level "
+      "features. The model must also be set appropriately (i.e. to read 3D "
+      "batches VS 4D batches.")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Models are defined "
       "in models.py.")
-  flags.DEFINE_bool(
-      "multitask", False,
-      "Whether to consider support_predictions")
   flags.DEFINE_bool(
       "start_new_model", False,
       "If set, this will not resume from a checkpoint and will instead create a"
       " new model instance.")
 
   # Training flags.
-  flags.DEFINE_integer("batch_size", 256,
+  flags.DEFINE_integer("batch_size", 1024,
+                       "How many examples to process per batch for training.")
+  flags.DEFINE_integer("stride_size", 4,
                        "How many examples to process per batch for training.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Which loss function to use for training the model.")
@@ -67,51 +79,80 @@ if __name__ == "__main__":
       "regularization_penalty", 1,
       "How much weight to give to the regularization loss (the label loss has "
       "a weight of 1).")
-  flags.DEFINE_float("base_learning_rate", 0.01,
+  flags.DEFINE_float("base_learning_rate", 0.001,
                      "Which learning rate to start with.")
   flags.DEFINE_float("learning_rate_decay", 0.95,
                      "Learning rate decay factor to be applied every "
                      "learning_rate_decay_examples.")
-  flags.DEFINE_float("learning_rate_decay_examples", 1000000,
+  flags.DEFINE_float("learning_rate_decay_examples", 4000000,
                      "Multiply current learning rate by learning_rate_decay "
                      "every learning_rate_decay_examples.")
-  flags.DEFINE_integer("num_epochs", 10,
+  flags.DEFINE_integer("num_epochs", 5,
                        "How many passes to make over the dataset before "
                        "halting training.")
-  flags.DEFINE_float("keep_checkpoint_every_n_hours", 0.1,
-                       "How many hours before saving a new checkpoint")
- 
-  flags.DEFINE_bool("reweight", False,
-                    "Whether to load model weight from file.")
-  flags.DEFINE_string("sample_vocab_file", "",
-                      "Where to load video_id vocabulary.")
-  flags.DEFINE_string("sample_freq_file", "",
-                      "Where to load sample frequency.")
- 
+
   # Other flags.
+  flags.DEFINE_integer("num_readers", 8,
+                       "How many threads to use for reading input files.")
   flags.DEFINE_string("optimizer", "AdamOptimizer",
                       "What optimizer class to use.")
-  flags.DEFINE_float("clip_gradient_norm", 1.0, "Norm to clip gradients to.")
+  flags.DEFINE_float("clip_gradient_norm", 0.1, "Norm to clip gradients to.")
   flags.DEFINE_bool(
       "log_device_placement", False,
       "Whether to write the device on which every op will run into the "
       "logs on startup.")
-  flags.DEFINE_integer("recall_at_n", 100,
-                       "N in recall@N.")
-  flags.DEFINE_bool("training", True,
-                    "Whether to train")
-  flags.DEFINE_bool(
-      "dropout", False,
-      "Whether to consider dropout")
-  flags.DEFINE_float("keep_prob", 1.0, 
-      "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
-  flags.DEFINE_float("noise_level", 0.0, 
-      "standard deviation of noise (added to hidden nodes)")
+
+def validate_class_name(flag_value, category, modules, expected_superclass):
+  """Checks that the given string matches a class of the expected type.
+
+  Args:
+    flag_value: A string naming the class to instantiate.
+    category: A string used further describe the class in error messages
+              (e.g. 'model', 'reader', 'loss').
+    modules: A list of modules to search for the given class.
+    expected_superclass: A class that the given class should inherit from.
+
+  Raises:
+    FlagsError: If the given class could not be found or if the first class
+    found with that name doesn't inherit from the expected superclass.
+
+  Returns:
+    True if a class was found that matches the given constraints.
+  """
+  candidates = [getattr(module, flag_value, None) for module in modules]
+  for candidate in candidates:
+    if not candidate:
+      continue
+    if not issubclass(candidate, expected_superclass):
+      raise flags.FlagsError("%s '%s' doesn't inherit from %s." %
+                             (category, flag_value,
+                              expected_superclass.__name__))
+    return True
+  raise flags.FlagsError("Unable to find %s '%s'." % (category, flag_value))
 
 def get_input_data_tensors(reader,
                            data_pattern,
-                           batch_size=256,
-                           num_epochs=None):
+                           batch_size=1000,
+                           num_epochs=None,
+                           num_readers=1):
+  """Creates the section of the graph which reads the training data.
+
+  Args:
+    reader: A class which parses the training data.
+    data_pattern: A 'glob' style path to the data files.
+    batch_size: How many examples to process at a time.
+    num_epochs: How many passes to make over the training data. Set to 'None'
+                to run indefinitely.
+    num_readers: How many I/O threads to use.
+
+  Returns:
+    A tuple containing the features tensor, labels tensor, and optionally a
+    tensor containing the number of frames per video. The exact dimensions
+    depend on the reader being used.
+
+  Raises:
+    IOError: If no files matching the given pattern were found.
+  """
   logging.info("Using batch size of " + str(batch_size) + " for training.")
   with tf.name_scope("train_input"):
     files = gfile.Glob(data_pattern)
@@ -119,15 +160,17 @@ def get_input_data_tensors(reader,
       raise IOError("Unable to find training files. data_pattern='" +
                     data_pattern + "'.")
     logging.info("Number of training files: %s.", str(len(files)))
-    files.sort()
     filename_queue = tf.train.string_input_producer(
-        files, num_epochs=num_epochs, shuffle=False)
-    training_data = reader.prepare_reader(filename_queue)
+        files, num_epochs=num_epochs, shuffle=True)
+    training_data = [
+        reader.prepare_reader(filename_queue) for _ in range(num_readers)
+    ]
 
-    return tf.train.batch(
+    return tf.train.shuffle_batch_join(
         training_data,
         batch_size=batch_size,
-        capacity=FLAGS.batch_size * 4,
+        capacity=FLAGS.batch_size * 5,
+        min_after_dequeue=FLAGS.batch_size,
         allow_smaller_final_batch=True,
         enqueue_many=True)
 
@@ -137,52 +180,19 @@ def find_class_by_name(name, modules):
   modules = [getattr(module, name, None) for module in modules]
   return next(a for a in modules if a)
 
-def get_video_weights_array():
-  weight_lines = open(FLAGS.sample_freq_file).readlines()
-  weights = numpy.array(map(float, weight_lines))
-  weights = weights.reshape([len(weight_lines)])
-  return weights, len(weight_lines)
 
-def optional_assign_weights(sess, weights_input, weights_assignment):
-  if weights_input is not None:
-    weights, length = get_video_weights_array()
-    _ = sess.run(weights_assignment, feed_dict={weights_input: weights})
-    print "Assigned weights from %s" % FLAGS.sample_freq_file
-  else:
-    print "Collection weights_input not found"
-
-def get_video_weights(video_id_batch):
-  video_id_to_index = tf.contrib.lookup.string_to_index_table_from_file(
-                          vocabulary_file=FLAGS.sample_vocab_file, default_value=0)
-  indexes = video_id_to_index.lookup(video_id_batch)
-  weights, length = get_video_weights_array()
-  weights_input = tf.placeholder(tf.float32, shape=[length], name="sample_weights_input")
-  weights_tensor = tf.get_variable("sample_weights",
-                               shape=[length],
-                               trainable=False,
-                               dtype=tf.float32,
-                               initializer=tf.constant_initializer(weights))
-  weights_assignment = tf.assign(weights_tensor, weights_input)
-
-  tf.add_to_collection("weights_input", weights_input)
-  tf.add_to_collection("weights_assignment", weights_assignment)
-
-  video_weight_batch = tf.nn.embedding_lookup(weights_tensor, indexes)
-  return video_weight_batch
-
-def build_graph(all_readers,
-                all_train_data_patterns,
-                input_reader,
-                input_data_pattern,
+def build_graph(reader,
                 model,
-                label_loss_fn=losses.CrossEntropyLoss(),
-                batch_size=256,
+                train_data_pattern,
+                label_loss_fn=losses_embedding.CrossEntropyLoss(),
+                batch_size=1000,
                 base_learning_rate=0.01,
                 learning_rate_decay_examples=1000000,
                 learning_rate_decay=0.95,
                 optimizer_class=tf.train.AdamOptimizer,
                 clip_gradient_norm=1.0,
                 regularization_penalty=1,
+                num_readers=1,
                 num_epochs=None):
   """Creates the Tensorflow graph.
 
@@ -191,10 +201,10 @@ def build_graph(all_readers,
   restored from a meta graph file rather than being recreated.
 
   Args:
-    all_readers: The data file readers. Every element in it should inherit from BaseReader.
+    reader: The data file reader. It should inherit from BaseReader.
     model: The core model (e.g. logistic or neural net). It should inherit
            from BaseModel.
-    train_data_patterns: glob paths to the training data files.
+    train_data_pattern: glob path to the training data files.
     label_loss_fn: What kind of loss to apply to the model. It should inherit
                 from BaseLoss.
     batch_size: How many examples to process at a time.
@@ -203,12 +213,13 @@ def build_graph(all_readers,
     clip_gradient_norm: Magnitude of the gradient to clip to.
     regularization_penalty: How much weight to give the regularization loss
                             compared to the label loss.
+    num_readers: How many threads to use for I/O operations.
     num_epochs: How many passes to make over the data. 'None' means an
                 unlimited number of passes.
   """
-  
+
   global_step = tf.Variable(0, trainable=False, name="global_step")
-  
+
   learning_rate = tf.train.exponential_decay(
       base_learning_rate,
       global_step * batch_size,
@@ -218,88 +229,59 @@ def build_graph(all_readers,
   tf.summary.scalar('learning_rate', learning_rate)
 
   optimizer = optimizer_class(learning_rate)
-  model_input_raw_tensors = []
-  labels_batch_tensor = None
-  for reader, data_pattern in zip(all_readers, all_train_data_patterns):
-    unused_video_id, model_input_raw, labels_batch, unused_num_frames = (
-        get_input_data_tensors(
-            reader,
-            data_pattern,
-            batch_size=batch_size,
-            num_epochs=num_epochs))
-    if labels_batch_tensor is None:
-      labels_batch_tensor = labels_batch
-    model_input_raw_tensors.append(tf.expand_dims(model_input_raw, axis=2))
+  unused_video_id, model_input_raw, labels_batch, num_frames = (
+      get_input_data_tensors(
+          reader,
+          train_data_pattern,
+          batch_size=batch_size,
+          num_readers=num_readers,
+          num_epochs=num_epochs))
+  tf.summary.histogram("model/input_raw", model_input_raw)
 
-  original_input = None
-  if input_data_pattern is not None:
-    unused_video_id, original_input, unused_labels_batch, unused_num_frames = (
-        get_input_data_tensors(
-            input_reader,
-            input_data_pattern,
-            batch_size=batch_size,
-            num_epochs=num_epochs))
-  
-  model_input = tf.concat(model_input_raw_tensors, axis=2)
-  labels_batch = labels_batch_tensor
-  tf.summary.histogram("model/input", model_input)
 
   with tf.name_scope("model"):
-    if FLAGS.noise_level > 0:
-      noise_level_tensor = tf.placeholder_with_default(0.0, shape=[], name="noise_level")
-    else:
-      noise_level_tensor = None
-
-    if FLAGS.dropout:
-      keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
-      result = model.create_model(
-          model_input,
-          labels=labels_batch,
-          vocab_size=reader.num_classes,
-          original_input=original_input,
-          dropout=FLAGS.dropout,
-          keep_prob=keep_prob_tensor,
-          noise_level=noise_level_tensor)
-    else:
-      result = model.create_model(
-          model_input,
-          labels=labels_batch,
-          vocab_size=reader.num_classes,
-          original_input=original_input,
-          noise_level=noise_level_tensor)
+    result = model.create_model(
+        labels_batch,
+        num_frames=num_frames,
+        vocab_size=reader.num_classes,
+        labels=labels_batch)
 
     for variable in slim.get_model_variables():
       tf.summary.histogram(variable.op.name, variable)
 
     predictions = result["predictions"]
+    predictions_val = result["predictions_val"]
+    if predictions.get_shape().ndims==3:
+        predictions = tf.reshape(predictions,[-1,predictions.get_shape().as_list()[2]])
+        labels_batch = tf.reshape(labels_batch,[-1,labels_batch.get_shape().as_list()[2]])
+    if "predictions_class" in result.keys():
+        predictions_class = result["predictions_class"]
+    else:
+        predictions_class = predictions
+
+    if "loss_sparse" in result.keys():
+        sparse_loss = result["loss_sparse"]
+    else:
+        sparse_loss = tf.constant(0.0)
+
     if "loss" in result.keys():
       label_loss = result["loss"]
+    elif "predictions_class" in result.keys():
+      label_loss = label_loss_fn.calculate_loss_mix(predictions, predictions_class, labels_batch)
     else:
-      video_weights_batch = None
-      if FLAGS.reweight:
-        video_weights_batch = get_video_weights(video_id)
-      if FLAGS.multitask:
-        print "using multitask loss"
-        support_predictions = result["support_predictions"]
-        tf.summary.histogram("model/support_predictions", support_predictions)
-        print "support_predictions", support_predictions
-        label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch)
-      else:
-        print "using original loss"
-        label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
+      label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
 
-    tf.summary.histogram("model/predictions", predictions)
     tf.summary.scalar("label_loss", label_loss)
 
     if "regularization_loss" in result.keys():
       reg_loss = result["regularization_loss"]
     else:
       reg_loss = tf.constant(0.0)
-    
+
     reg_losses = tf.losses.get_regularization_losses()
     if reg_losses:
       reg_loss += tf.add_n(reg_losses)
-    
+
     if regularization_penalty != 0:
       tf.summary.scalar("reg_loss", reg_loss)
 
@@ -315,29 +297,22 @@ def build_graph(all_readers,
           label_loss = tf.identity(label_loss)
 
     # Incorporate the L2 weight penalties etc.
-    final_loss = regularization_penalty * reg_loss + label_loss
+    final_loss = regularization_penalty * reg_loss + label_loss + sparse_loss
+    train_op = slim.learning.create_train_op(
+        final_loss,
+        optimizer,
+        global_step=global_step,
+        clip_gradient_norm=clip_gradient_norm)
 
-    if FLAGS.training:
-      gradients = optimizer.compute_gradients(final_loss,
-          colocate_gradients_with_ops=False)
-      if clip_gradient_norm > 0:
-        with tf.name_scope('clip_grads'):
-          gradients = utils.clip_gradient_norms(gradients , clip_gradient_norm)
-      train_op = optimizer.apply_gradients(gradients, global_step=global_step)
-    else:
-      train_op = tf.no_op()
-  
     tf.add_to_collection("global_step", global_step)
-    tf.add_to_collection("loss", label_loss)
+    tf.add_to_collection("loss", final_loss)
+    tf.add_to_collection("reg_loss", reg_loss)
     tf.add_to_collection("predictions", predictions)
-    tf.add_to_collection("input_batch_raw", model_input)
-    tf.add_to_collection("input_batch", model_input)
+    tf.add_to_collection("predictions_val", predictions_val)
+    tf.add_to_collection("input_batch_raw", model_input_raw)
+    tf.add_to_collection("num_frames", num_frames)
     tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
     tf.add_to_collection("train_op", train_op)
-    if FLAGS.dropout:
-      tf.add_to_collection("keep_prob", keep_prob_tensor)
-    if FLAGS.noise_level > 0:
-      tf.add_to_collection("noise_level", noise_level_tensor)
 
 
 class Trainer(object):
@@ -356,7 +331,8 @@ class Trainer(object):
     self.task = task
     self.is_master = (task.type == "master" and task.index == 0)
     self.train_dir = train_dir
-    self.config = tf.ConfigProto(log_device_placement=log_device_placement)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+    self.config = tf.ConfigProto(log_device_placement=log_device_placement,gpu_options=gpu_options)
 
     if self.is_master and self.task.index > 0:
       raise StandardError("%s: Only one replica of master expected",
@@ -387,20 +363,12 @@ class Trainer(object):
 
         global_step = tf.get_collection("global_step")[0]
         loss = tf.get_collection("loss")[0]
+        reg_loss = tf.get_collection("reg_loss")[0]
         predictions = tf.get_collection("predictions")[0]
+        predictions_v = tf.get_collection("predictions_val")[0]
         labels = tf.get_collection("labels")[0]
         train_op = tf.get_collection("train_op")[0]
         init_op = tf.global_variables_initializer()
-
-        if FLAGS.dropout:
-          keep_prob_tensor = tf.get_collection("keep_prob")[0]
-        if FLAGS.noise_level > 0:
-          noise_level_tensor = tf.get_collection("noise_level")[0]
-        if FLAGS.reweight:
-          weights_input, weights_assignment = None, None
-          if len(tf.get_collection("weights_input")) > 0:
-            weights_input = tf.get_collection("weights_input")[0]
-            weights_assignment = tf.get_collection("weights_assignment")[0]
 
     sv = tf.train.Supervisor(
         graph,
@@ -408,52 +376,34 @@ class Trainer(object):
         init_op=init_op,
         is_chief=self.is_master,
         global_step=global_step,
-        save_model_secs=6 * 60,
+        save_model_secs=15 * 60,
         save_summaries_secs=120,
         saver=saver)
 
     logging.info("%s: Starting managed session.", task_as_string(self.task))
     with sv.managed_session(target, config=self.config) as sess:
 
-      # re-assign weights
-      if FLAGS.reweight:
-        optional_assign_weights(sess, weights_input, weights_assignment)
-
       try:
         logging.info("%s: Entering training loop.", task_as_string(self.task))
         while not sv.should_stop():
 
           batch_start_time = time.time()
-          custom_feed = {}
-          if FLAGS.dropout:
-            custom_feed[keep_prob_tensor] = FLAGS.keep_prob
-          if FLAGS.noise_level > 0:
-            custom_feed[noise_level_tensor] = FLAGS.noise_level
-
-          _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
-              [train_op, global_step, loss, predictions, labels], feed_dict=custom_feed)
+          _, global_step_val, loss_val, reg_loss_val, predictions_val, labels_val = sess.run(
+              [train_op, global_step, loss, reg_loss, predictions_v, labels])
           seconds_per_batch = time.time() - batch_start_time
-
           if self.is_master:
             examples_per_second = labels_val.shape[0] / seconds_per_batch
             hit_at_one = eval_util.calculate_hit_at_one(predictions_val,
                                                         labels_val)
             perr = eval_util.calculate_precision_at_equal_recall_rate(
                 predictions_val, labels_val)
-            recall = "N/A"
-            if False:
-              recall = eval_util.calculate_recall_at_n(
-                  predictions_val, labels_val, FLAGS.recall_at_n)
-              sv.summary_writer.add_summary(
-                  utils.MakeSummary("model/Training_Recall@%d" % FLAGS.recall_at_n, recall), global_step_val)
-              recall = "%.2f" % recall
             gap = eval_util.calculate_gap(predictions_val, labels_val)
 
             logging.info(
                 "%s: training step " + str(global_step_val) + "| Hit@1: " +
                 ("%.2f" % hit_at_one) + " PERR: " + ("%.2f" % perr) + " GAP: " +
-                ("%.2f" % gap) + " Recall@%d: " % FLAGS.recall_at_n +
-                recall + " Loss: " + str(loss_val),
+                ("%.2f" % gap) + " Loss: " + str(loss_val) +
+                " RegLoss: " + str(reg_loss_val),
                 task_as_string(self.task))
 
             sv.summary_writer.add_summary(
@@ -467,6 +417,7 @@ class Trainer(object):
                 utils.MakeSummary("global_step/Examples/Second",
                                   examples_per_second), global_step_val)
             sv.summary_writer.flush()
+
 
       except tf.errors.OutOfRangeError:
         logging.info("%s: Done training -- epoch limit reached.",
@@ -510,13 +461,13 @@ class Trainer(object):
       logging.info("%s: Flag 'start_new_model' is set. Building a new model.",
                    task_as_string(self.task))
       return None
-    
+
     latest_checkpoint = tf.train.latest_checkpoint(train_dir)
-    if not latest_checkpoint: 
+    if not latest_checkpoint:
       logging.info("%s: No checkpoint file found. Building a new model.",
                    task_as_string(self.task))
       return None
-    
+
     meta_filename = latest_checkpoint + ".meta"
     if not gfile.Exists(meta_filename):
       logging.info("%s: No meta graph file found. Building a new model.",
@@ -537,45 +488,40 @@ class Trainer(object):
     feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
         FLAGS.feature_names, FLAGS.feature_sizes)
 
-    # prepare a reader for each single model prediction result
-    all_readers = []
-
-    all_patterns = FLAGS.train_data_patterns
-    all_patterns = map(lambda x: x.strip(), all_patterns.strip().strip(",").split(","))
-    for i in xrange(len(all_patterns)):
-      all_readers.append(readers.EnsembleReader(
-          feature_names=feature_names, feature_sizes=feature_sizes))
-
-    input_reader = None
-    input_data_pattern = None
-    if FLAGS.input_data_pattern is not None:
-      input_reader = readers.EnsembleReader(
-          feature_names=["input"], feature_sizes=[1024+128])
-      input_data_pattern = FLAGS.input_data_pattern
+    if FLAGS.frame_features:
+      if FLAGS.frame_only:
+          reader = readers.YT8MFrameFeatureOnlyReader(
+              feature_names=feature_names, feature_sizes=feature_sizes)
+      else:
+          reader = readers.YT8MFrameFeatureReader(
+              feature_names=feature_names, feature_sizes=feature_sizes)
+    else:
+      reader = readers.YT8MAggregatedFeatureReader(
+          feature_names=feature_names, feature_sizes=feature_sizes)
 
     # Find the model.
-    model = find_class_by_name(FLAGS.model, [ensemble_level_models])()
-    label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
+    model = find_class_by_name(FLAGS.model,
+                               [labels_embedding])()
+    label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses_embedding])()
     optimizer_class = find_class_by_name(FLAGS.optimizer, [tf.train])
 
-    build_graph(all_readers=all_readers,
-                all_train_data_patterns=all_patterns,
-                input_reader=input_reader,
-                input_data_pattern=input_data_pattern,
-                model=model,
-                optimizer_class=optimizer_class,
-                clip_gradient_norm=FLAGS.clip_gradient_norm,
-                label_loss_fn=label_loss_fn,
-                base_learning_rate=FLAGS.base_learning_rate,
-                learning_rate_decay=FLAGS.learning_rate_decay,
-                learning_rate_decay_examples=FLAGS.learning_rate_decay_examples,
-                regularization_penalty=FLAGS.regularization_penalty,
-                batch_size=FLAGS.batch_size,
-                num_epochs=FLAGS.num_epochs)
+    build_graph(reader=reader,
+                 model=model,
+                 optimizer_class=optimizer_class,
+                 clip_gradient_norm=FLAGS.clip_gradient_norm,
+                 train_data_pattern=FLAGS.train_data_pattern,
+                 label_loss_fn=label_loss_fn,
+                 base_learning_rate=FLAGS.base_learning_rate,
+                 learning_rate_decay=FLAGS.learning_rate_decay,
+                 learning_rate_decay_examples=FLAGS.learning_rate_decay_examples,
+                 regularization_penalty=FLAGS.regularization_penalty,
+                 num_readers=FLAGS.num_readers,
+                 batch_size=FLAGS.batch_size,
+                 num_epochs=FLAGS.num_epochs)
 
     logging.info("%s: Built graph.", task_as_string(self.task))
 
-    return tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours)
+    return tf.train.Saver(max_to_keep=2, keep_checkpoint_every_n_hours=0.25)
 
 
 class ParameterServer(object):

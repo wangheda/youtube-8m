@@ -335,6 +335,16 @@ def build_graph(reader,
                         0.1*label_loss_fn.calculate_loss(prediction_prepare_video, labels_batch)
         else:
             label_loss = label_loss*0.0
+    elif "prediction_minmax" in result.keys():
+        predictions_minmax = result["prediction_minmax"]
+        predictions_min = tf.reduce_min(predictions_minmax,axis=1)
+        predictions_max = tf.reduce_max(predictions_minmax,axis=1)
+        epsilon = 10e-6
+        float_labels = tf.cast(labels_batch, tf.float32)
+        cross_entropy_loss = float_labels * tf.log(predictions_min + epsilon) + (
+            1 - float_labels) * tf.log(1 - predictions_max + epsilon)
+        frame_loss = tf.reduce_mean(tf.reduce_sum(tf.negative(cross_entropy_loss), 1))
+        label_loss = label_loss*0.0
     else:
         frame_loss = tf.constant(0.0)
     tf.summary.scalar("label_loss", label_loss)
