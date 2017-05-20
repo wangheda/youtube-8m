@@ -5,7 +5,6 @@ CUDA_VISIBLE_DEVICES=0 python train.py \
     --feature_names="mean_rgb,mean_audio" \
     --feature_sizes="1024,128" \
     --model=MultiTaskDivergenceMoeModel \
-    --lstm_cells="1024,128" \
     --divergence_model_count=8 \
     --moe_num_mixtures=4 \
     --multitask=True \
