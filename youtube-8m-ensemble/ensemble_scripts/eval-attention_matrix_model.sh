@@ -18,8 +18,8 @@ done
 echo "$validate_data_patterns"
 input_data_pattern="${validate_path}/model_input/*.tfrecord"
 
-EVERY=100
-start=-1
+EVERY=200
+start=0
 DIR="$(pwd)"
 MODEL_DIR="${DIR}/../model/${model}" \
 
