@@ -149,6 +149,25 @@ class CrossEntropyLoss(BaseLoss):
 
         cross_entropy_loss = cross_entropy_loss*0.0
 
+      elif FLAGS.loss_function=="loss_smoothing":
+        print("loss_smoothing")
+        embedding_mat = np.loadtxt("./resources/embedding_matrix.model")
+        vocab_size = embedding_mat.shape[1]
+        labels_size = float_labels.get_shape().as_list()[1]
+        embedding_mat = tf.cast(embedding_mat,dtype=tf.float32)
+        cross_entropy_loss_1 = float_labels * tf.log(predictions + epsilon) + (
+            1 - float_labels) * tf.log(1 - predictions + epsilon)
+        float_labels_1 = float_labels[:,:vocab_size]
+        labels_smooth = tf.matmul(float_labels_1,embedding_mat)/tf.reduce_sum(float_labels_1,axis=1,keep_dims=True)*0.5+float_labels_1
+        labels_smooth = tf.clip_by_value(labels_smooth, 0.0, 1.0)
+        float_classes = labels_smooth
+        for i in range(labels_size//vocab_size-1):
+          float_classes = tf.concat((float_classes,labels_smooth),axis=1)
+        cross_entropy_loss_2 = float_classes * tf.log(predictions + epsilon) + (
+            1 - float_classes) * tf.log(1 - predictions + epsilon)
+
+        cross_entropy_loss = cross_entropy_loss_1 + 0.5*cross_entropy_loss_2
+
       else:
         cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
             1 - float_labels) * tf.log(1 - predictions + epsilon)

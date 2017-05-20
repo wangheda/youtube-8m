@@ -18,18 +18,16 @@ import os
 import time
 
 import eval_util
-import losses
-import frame_level_models
-import video_level_models
+import losses_embedding
+import labels_embedding
 import readers
+import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow import app
 from tensorflow import flags
 from tensorflow import gfile
 from tensorflow import logging
-from tensorflow.python.ops import variables as tf_variables
-from mygradients import mygradients, mygradients_full
 import utils
 
 FLAGS = flags.FLAGS
@@ -61,12 +59,6 @@ if __name__ == "__main__":
       "Otherwise, --train_data_pattern must be aggregated video-level "
       "features. The model must also be set appropriately (i.e. to read 3D "
       "batches VS 4D batches.")
-  flags.DEFINE_bool(
-      "norm", True,
-      "If set, then --train_data_pattern must be frame-level features. "
-      "Otherwise, --train_data_pattern must be aggregated video-level "
-      "features. The model must also be set appropriately (i.e. to read 3D "
-      "batches VS 4D batches.")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Models are defined "
@@ -79,7 +71,7 @@ if __name__ == "__main__":
   # Training flags.
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch for training.")
-  flags.DEFINE_integer("stride_size", 3,
+  flags.DEFINE_integer("stride_size", 4,
                        "How many examples to process per batch for training.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Which loss function to use for training the model.")
@@ -87,7 +79,7 @@ if __name__ == "__main__":
       "regularization_penalty", 1,
       "How much weight to give to the regularization loss (the label loss has "
       "a weight of 1).")
-  flags.DEFINE_float("base_learning_rate", 0.01,
+  flags.DEFINE_float("base_learning_rate", 0.001,
                      "Which learning rate to start with.")
   flags.DEFINE_float("learning_rate_decay", 0.95,
                      "Learning rate decay factor to be applied every "
@@ -103,8 +95,6 @@ if __name__ == "__main__":
   flags.DEFINE_integer("num_readers", 8,
                        "How many threads to use for reading input files.")
   flags.DEFINE_string("optimizer", "AdamOptimizer",
-                      "What optimizer class to use.")
-  flags.DEFINE_string("gradient", None,
                       "What optimizer class to use.")
   flags.DEFINE_float("clip_gradient_norm", 0.1, "Norm to clip gradients to.")
   flags.DEFINE_bool(
@@ -194,7 +184,7 @@ def find_class_by_name(name, modules):
 def build_graph(reader,
                 model,
                 train_data_pattern,
-                label_loss_fn=losses.CrossEntropyLoss(),
+                label_loss_fn=losses_embedding.CrossEntropyLoss(),
                 batch_size=1000,
                 base_learning_rate=0.01,
                 learning_rate_decay_examples=1000000,
@@ -227,9 +217,9 @@ def build_graph(reader,
     num_epochs: How many passes to make over the data. 'None' means an
                 unlimited number of passes.
   """
-  
+
   global_step = tf.Variable(0, trainable=False, name="global_step")
-  
+
   learning_rate = tf.train.exponential_decay(
       base_learning_rate,
       global_step * batch_size,
@@ -238,6 +228,7 @@ def build_graph(reader,
       staircase=True)
   tf.summary.scalar('learning_rate', learning_rate)
 
+  optimizer = optimizer_class(learning_rate)
   unused_video_id, model_input_raw, labels_batch, num_frames = (
       get_input_data_tensors(
           reader,
@@ -246,16 +237,11 @@ def build_graph(reader,
           num_readers=num_readers,
           num_epochs=num_epochs))
   tf.summary.histogram("model/input_raw", model_input_raw)
-  
-  feature_dim = len(model_input_raw.get_shape()) - 1
-  if FLAGS.norm:
-    model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
-  else:
-    model_input = model_input_raw
+
 
   with tf.name_scope("model"):
     result = model.create_model(
-        model_input,
+        labels_batch,
         num_frames=num_frames,
         vocab_size=reader.num_classes,
         labels=labels_batch)
@@ -264,100 +250,38 @@ def build_graph(reader,
       tf.summary.histogram(variable.op.name, variable)
 
     predictions = result["predictions"]
-    if "predictions_negative" in result.keys():
-        predictions_negative = result["predictions_negative"]
-    else:
-        predictions_negative = 1-predictions
-    if "predictions_positive" in result.keys():
-        predictions_positive = result["predictions_positive"]
-    else:
-        predictions_positive = predictions
+    predictions_val = result["predictions_val"]
     if predictions.get_shape().ndims==3:
         predictions = tf.reshape(predictions,[-1,predictions.get_shape().as_list()[2]])
         labels_batch = tf.reshape(labels_batch,[-1,labels_batch.get_shape().as_list()[2]])
-    if "bottleneck" in result.keys():
-        bottle_neck = result["bottleneck"]
-    else:
-        bottle_neck = tf.constant(0.0)
     if "predictions_class" in result.keys():
         predictions_class = result["predictions_class"]
     else:
         predictions_class = predictions
-    if "predictions_encoder" in result.keys():
-        predictions_encoder = result["predictions_encoder"]
+
+    if "loss_sparse" in result.keys():
+        sparse_loss = result["loss_sparse"]
     else:
-        predictions_encoder = predictions
-    if "predictions_experts" in result.keys():
-        predictions_experts = result["predictions_experts"]
-    else:
-        predictions_experts = predictions
-    if "predictions_postprocess" in result.keys():
-        predictions_postprocess = result["predictions_postprocess"]
-    else:
-        predictions_postprocess = predictions
+        sparse_loss = tf.constant(0.0)
 
     if "loss" in result.keys():
-      append_loss = result["loss"]
-    else:
-      append_loss = tf.constant(0.0)
-    if "predictions_encoder" in result.keys():
-      label_loss, float_encoders = label_loss_fn.calculate_loss_mix2(predictions, predictions_class, predictions_encoder, labels_batch)
-      tf.summary.histogram("model/float_encoders", float_encoders)
+      label_loss = result["loss"]
     elif "predictions_class" in result.keys():
       label_loss = label_loss_fn.calculate_loss_mix(predictions, predictions_class, labels_batch)
-    elif "predictions_experts" in result.keys():
-      label_loss = label_loss_fn.calculate_loss_max(predictions, predictions_experts, labels_batch)
-    elif "predictions_postprocess" in result.keys():
-      label_loss = label_loss_fn.calculate_loss_postprocess(predictions_postprocess, labels_batch)
-    elif "predictions_negative" in result.keys():
-      label_loss = label_loss_fn.calculate_loss_negative(predictions_positive, predictions_negative, labels_batch)
     else:
       label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
 
-    if "prediction_frames" in result.keys():
-        predictions_frames = result["prediction_frames"]
-        labels_frames = tf.tile(tf.reshape(labels_batch,[-1,1,reader.num_classes]),[1,FLAGS.moe_num_extend,1])
-        labels_frames = tf.cast(tf.reshape(labels_frames,[-1,reader.num_classes]),tf.float32)
-        frame_loss = label_loss_fn.calculate_loss(predictions_frames, labels_frames)
-        if "prediction_prepare_frames" in result.keys():
-            prediction_prepare_frames = result["prediction_prepare_frames"]
-            prediction_prepare_video = result["prediction_prepare_video"]
-            max_frames = model_input.get_shape().as_list()[1]
-            frames_sum = tf.reduce_sum(tf.abs(model_input),axis=2)
-            frames_true = tf.ones(tf.shape(frames_sum))
-            frames_false = tf.zeros(tf.shape(frames_sum))
-            frames_bool = tf.where(tf.greater(frames_sum, frames_false), frames_true, frames_false)
-            frames_bool = tf.reshape(frames_bool[:,0:max_frames:FLAGS.stride_size],[-1,1])
-            labels_prepare_frames = tf.tile(tf.reshape(labels_batch,[-1,1,reader.num_classes]),[1,max_frames//FLAGS.stride_size,1])
-            labels_prepare_frames = tf.cast(tf.reshape(labels_prepare_frames,[-1,reader.num_classes]),tf.float32)*frames_bool
-            prediction_prepare_frames = prediction_prepare_frames*frames_bool
-            label_loss = 0.1*label_loss_fn.calculate_loss(prediction_prepare_frames, labels_prepare_frames) + \
-                        0.1*label_loss_fn.calculate_loss(prediction_prepare_video, labels_batch)
-        else:
-            label_loss = label_loss*0.0
-    elif "prediction_minmax" in result.keys():
-        predictions_minmax = result["prediction_minmax"]
-        predictions_min = tf.reduce_min(predictions_minmax,axis=1)
-        predictions_max = tf.reduce_max(predictions_minmax,axis=1)
-        epsilon = 10e-6
-        float_labels = tf.cast(labels_batch, tf.float32)
-        cross_entropy_loss = float_labels * tf.log(predictions_min + epsilon) + (
-            1 - float_labels) * tf.log(1 - predictions_max + epsilon)
-        frame_loss = tf.reduce_mean(tf.reduce_sum(tf.negative(cross_entropy_loss), 1))
-        label_loss = label_loss*0.0
-    else:
-        frame_loss = tf.constant(0.0)
     tf.summary.scalar("label_loss", label_loss)
 
     if "regularization_loss" in result.keys():
       reg_loss = result["regularization_loss"]
     else:
       reg_loss = tf.constant(0.0)
-    
+
     reg_losses = tf.losses.get_regularization_losses()
     if reg_losses:
       reg_loss += tf.add_n(reg_losses)
-    
+
     if regularization_penalty != 0:
       tf.summary.scalar("reg_loss", reg_loss)
 
@@ -373,28 +297,19 @@ def build_graph(reader,
           label_loss = tf.identity(label_loss)
 
     # Incorporate the L2 weight penalties etc.
-    final_loss = regularization_penalty * reg_loss + label_loss + frame_loss + append_loss
-    if FLAGS.gradient=="my":
-        opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
-        variables_to_train = tf_variables.trainable_variables()
-        top_grads, top_vars = mygradients(final_loss, variables_to_train,  global_step=global_step, name="mygradients_net")
-        grads_and_vars = list(zip(top_grads, top_vars))
-        train_op = opt.apply_gradients(grads_and_vars, global_step=global_step)
-    else:
-        optimizer = optimizer_class(learning_rate)
-        train_op = slim.learning.create_train_op(
-            final_loss,
-            optimizer,
-            global_step=global_step,
-            clip_gradient_norm=clip_gradient_norm)
+    final_loss = regularization_penalty * reg_loss + label_loss + sparse_loss
+    train_op = slim.learning.create_train_op(
+        final_loss,
+        optimizer,
+        global_step=global_step,
+        clip_gradient_norm=clip_gradient_norm)
 
     tf.add_to_collection("global_step", global_step)
     tf.add_to_collection("loss", final_loss)
     tf.add_to_collection("reg_loss", reg_loss)
-    tf.add_to_collection("bottleneck", bottle_neck)
     tf.add_to_collection("predictions", predictions)
+    tf.add_to_collection("predictions_val", predictions_val)
     tf.add_to_collection("input_batch_raw", model_input_raw)
-    tf.add_to_collection("input_batch", model_input)
     tf.add_to_collection("num_frames", num_frames)
     tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
     tf.add_to_collection("train_op", train_op)
@@ -416,7 +331,8 @@ class Trainer(object):
     self.task = task
     self.is_master = (task.type == "master" and task.index == 0)
     self.train_dir = train_dir
-    self.config = tf.ConfigProto(log_device_placement=log_device_placement)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+    self.config = tf.ConfigProto(log_device_placement=log_device_placement,gpu_options=gpu_options)
 
     if self.is_master and self.task.index > 0:
       raise StandardError("%s: Only one replica of master expected",
@@ -449,6 +365,7 @@ class Trainer(object):
         loss = tf.get_collection("loss")[0]
         reg_loss = tf.get_collection("reg_loss")[0]
         predictions = tf.get_collection("predictions")[0]
+        predictions_v = tf.get_collection("predictions_val")[0]
         labels = tf.get_collection("labels")[0]
         train_op = tf.get_collection("train_op")[0]
         init_op = tf.global_variables_initializer()
@@ -472,9 +389,8 @@ class Trainer(object):
 
           batch_start_time = time.time()
           _, global_step_val, loss_val, reg_loss_val, predictions_val, labels_val = sess.run(
-              [train_op, global_step, loss, reg_loss, predictions, labels])
+              [train_op, global_step, loss, reg_loss, predictions_v, labels])
           seconds_per_batch = time.time() - batch_start_time
-
           if self.is_master:
             examples_per_second = labels_val.shape[0] / seconds_per_batch
             hit_at_one = eval_util.calculate_hit_at_one(predictions_val,
@@ -501,6 +417,7 @@ class Trainer(object):
                 utils.MakeSummary("global_step/Examples/Second",
                                   examples_per_second), global_step_val)
             sv.summary_writer.flush()
+
 
       except tf.errors.OutOfRangeError:
         logging.info("%s: Done training -- epoch limit reached.",
@@ -544,13 +461,13 @@ class Trainer(object):
       logging.info("%s: Flag 'start_new_model' is set. Building a new model.",
                    task_as_string(self.task))
       return None
-    
+
     latest_checkpoint = tf.train.latest_checkpoint(train_dir)
-    if not latest_checkpoint: 
+    if not latest_checkpoint:
       logging.info("%s: No checkpoint file found. Building a new model.",
                    task_as_string(self.task))
       return None
-    
+
     meta_filename = latest_checkpoint + ".meta"
     if not gfile.Exists(meta_filename):
       logging.info("%s: No meta graph file found. Building a new model.",
@@ -584,8 +501,8 @@ class Trainer(object):
 
     # Find the model.
     model = find_class_by_name(FLAGS.model,
-                               [frame_level_models, video_level_models])()
-    label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
+                               [labels_embedding])()
+    label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses_embedding])()
     optimizer_class = find_class_by_name(FLAGS.optimizer, [tf.train])
 
     build_graph(reader=reader,
@@ -604,7 +521,7 @@ class Trainer(object):
 
     logging.info("%s: Built graph.", task_as_string(self.task))
 
-    return tf.train.Saver(max_to_keep=2, keep_checkpoint_every_n_hours=1)
+    return tf.train.Saver(max_to_keep=2, keep_checkpoint_every_n_hours=0.25)
 
 
 class ParameterServer(object):
