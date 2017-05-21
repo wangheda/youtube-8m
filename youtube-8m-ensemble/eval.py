@@ -88,9 +88,9 @@ def get_input_evaluation_tensors(reader,
 
 def build_graph(all_readers,
                 input_reader,
+                all_eval_data_patterns,
                 input_data_pattern,
                 model,
-                all_eval_data_patterns,
                 label_loss_fn,
                 batch_size=256):
   """Creates the Tensorflow graph for evaluation.
@@ -290,9 +290,9 @@ def evaluate():
     build_graph(
         all_readers=all_readers,
         input_reader=input_reader,
+        all_eval_data_patterns=all_patterns,
         input_data_pattern=input_data_pattern,
         model=model,
-        all_eval_data_patterns=all_patterns,
         label_loss_fn=label_loss_fn,
         batch_size=FLAGS.batch_size)
     logging.info("built evaluation graph")

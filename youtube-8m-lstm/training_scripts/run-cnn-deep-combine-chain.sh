@@ -1,0 +1,19 @@
+CUDA_VISIBLE_DEVICES=0 python train.py \
+        --train_dir="../model/cnn_deep_combine_chain/" \
+        --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
+        --frame_features=True \
+        --feature_names="rgb,audio" \
+        --feature_sizes="1024,128" \
+        --model=CnnDeepCombineChainModel \
+        --label_loss=MultiTaskCrossEntropyLoss \
+        --batch_size=128 \
+        --multitask=True \
+        --support_type="label,label,label,label" \
+        --support_loss_percent=0.05 \
+        --moe_num_mixtures=4 \
+        --keep_checkpoint_every_n_hours=0.5 \
+        --num_readers=4 \
+        --deep_chain_layers=4 \
+        --deep_chain_relu_cells=128 \
+        --base_learning_rate=0.001
+

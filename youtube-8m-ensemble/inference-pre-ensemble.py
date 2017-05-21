@@ -36,6 +36,8 @@ FLAGS = flags.FLAGS
 if __name__ == '__main__':
   flags.DEFINE_string("model_checkpoint_path", None,
                       "The file path to load the model from.")
+  flags.DEFINE_string("train_dir", "",
+                      "The directory to load the model from.")
   flags.DEFINE_string("output_dir", "",
                       "The file to save the predictions to.")
   flags.DEFINE_string(
@@ -140,6 +142,8 @@ def inference_loop(video_id_batch, prediction_batch,
                    output_dir, batch_size):
   with tf.Session() as sess:
     checkpoint = FLAGS.model_checkpoint_path
+    if checkpoint is None:
+      checkpoint = tf.train.latest_checkpoint(FLAGS.train_dir)
     if checkpoint:
       logging.info("Loading checkpoint for eval: " + checkpoint)
       saver.restore(sess, checkpoint)
@@ -234,7 +238,7 @@ def inference_loop(video_id_batch, prediction_batch,
 
 
 def write_to_record(video_ids, video_labels, video_features, filenum, num_examples_processed):
-    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%03d.tfrecord' % filenum)
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%04d.tfrecord' % filenum)
     for i in range(num_examples_processed):
         video_id = video_ids[i]
         video_label = np.nonzero(video_labels[i,:])[0]

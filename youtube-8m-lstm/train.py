@@ -49,6 +49,16 @@ if __name__ == "__main__":
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
 
+  # Distillation flags
+  flags.DEFINE_bool(
+      "distillation_features", False,
+      "If set, *DistillationFeatureReader will be used, the feature must contains"
+      "prediction features (shape = [4716]).")
+  flags.DEFINE_integer(
+      "distillation_type", 0, "Type of distillation, options are 1 and 2.")
+  flags.DEFINE_float("distillation_percent", 0.0,
+                     "If larger than 0, final_loss = distillation_loss * percent + normal_loss * (1.0 - percent).")
+
   # Model flags.
   flags.DEFINE_bool(
       "frame_features", False,
@@ -92,6 +102,8 @@ if __name__ == "__main__":
                        "How many steps before stop.")
   flags.DEFINE_float("keep_checkpoint_every_n_hours", 1.0,
                      "How many hours before saving a new checkpoint")
+  flags.DEFINE_integer("keep_checkpoint_interval", 15,
+                     "How many minutes before saving a new checkpoint")
 
   flags.DEFINE_bool("reweight", False,
                     "Whether to load model weight from file.")
@@ -281,13 +293,30 @@ def build_graph(reader,
   tf.summary.scalar('learning_rate', learning_rate)
 
   optimizer = optimizer_class(learning_rate)
-  video_id, model_input_raw, labels_batch, num_frames = (
-      get_input_data_tensors(
-          reader,
-          train_data_pattern,
-          batch_size=batch_size,
-          num_readers=num_readers,
-          num_epochs=num_epochs))
+  if FLAGS.distillation_features:
+    video_id, model_input_raw, labels_batch, num_frames, distill_labels_batch = (
+        get_input_data_tensors(
+            reader,
+            train_data_pattern,
+            batch_size=batch_size,
+            num_readers=num_readers,
+            num_epochs=num_epochs))
+    if FLAGS.distillation_features and FLAGS.distillation_type == 2:
+      p = FLAGS.distillation_percent
+      print "distillation_percent =", p, "reforming labels"
+      float_labels = tf.cast(labels_batch, dtype=tf.float32)
+      sum_float_labels = tf.reduce_sum(float_labels, axis=1, keep_dims=True)
+      sum_distill_labels = tf.reduce_sum(distill_labels_batch, axis=1, keep_dims=True) + 1e-6
+      distill_labels_batch = float_labels + distill_labels_batch * (sum_float_labels / sum_distill_labels * p)
+      distill_labels_batch = tf.clip_by_value(distill_labels_batch, clip_value_min=0.0, clip_value_max=1.0)
+  else:
+    video_id, model_input_raw, labels_batch, num_frames = (
+        get_input_data_tensors(
+            reader,
+            train_data_pattern,
+            batch_size=batch_size,
+            num_readers=num_readers,
+            num_epochs=num_epochs))
 
   # data augmentation, will not persist in inference
   data_augmenter = augmenter_class()
@@ -339,9 +368,39 @@ def build_graph(reader,
         support_predictions = result["support_predictions"]
         tf.summary.histogram("model/support_predictions", support_predictions)
         print "support_predictions", support_predictions
-        label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch)
+        if FLAGS.distillation_features and FLAGS.distillation_type == 1:
+          p = FLAGS.distillation_percent
+          print "distillation_percent =", p
+          if p <= 0:
+            label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch)
+          elif p >= 1:
+            label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, distill_labels_batch, weights=video_weights_batch)
+          else:
+            label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch) * (1.0 - p) \
+                        + label_loss_fn.calculate_loss(predictions, support_predictions, distill_labels_batch, weights=video_weights_batch) * p
+        elif FLAGS.distillation_features and FLAGS.distillation_type == 2:
+          print "using pure distillation loss"
+          label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, distill_labels_batch, weights=video_weights_batch)
+        else:
+          print "using original loss"
+          label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch, weights=video_weights_batch)
       else:
-        label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
+        if FLAGS.distillation_features and FLAGS.distillation_type == 1:
+          p = FLAGS.distillation_percent
+          print "distillation_percent =", p
+          if p <= 0:
+            label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
+          elif p >= 1:
+            label_loss = label_loss_fn.calculate_loss(predictions, distill_labels_batch, weights=video_weights_batch)
+          else:
+            label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch) * (1.0 - p) \
+                         + label_loss_fn.calculate_loss(predictions, distill_labels_batch, weights=video_weights_batch) * p
+        elif FLAGS.distillation_features and FLAGS.distillation_type == 2:
+          print "using pure distillation loss"
+          label_loss = label_loss_fn.calculate_loss(predictions, distill_labels_batch, weights=video_weights_batch)
+        else:
+          print "using original loss"
+          label_loss = label_loss_fn.calculate_loss(predictions, labels_batch, weights=video_weights_batch)
 
     tf.summary.histogram("model/predictions", predictions)
     tf.summary.scalar("label_loss", label_loss)
@@ -461,7 +520,7 @@ class Trainer(object):
         init_op=init_op,
         is_chief=self.is_master,
         global_step=global_step,
-        save_model_secs=6 * 60,
+        save_model_secs=FLAGS.keep_checkpoint_interval * 60,
         save_summaries_secs=120,
         saver=saver)
 
@@ -597,12 +656,21 @@ class Trainer(object):
     feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
         FLAGS.feature_names, FLAGS.feature_sizes)
 
-    if FLAGS.frame_features:
-      reader = readers.YT8MFrameFeatureReader(
-          feature_names=feature_names, feature_sizes=feature_sizes)
+    if FLAGS.distillation_features:
+      print "distillation readers"
+      if FLAGS.frame_features:
+        reader = readers.YT8MFrameDistillationFeatureReader(
+            feature_names=feature_names, feature_sizes=feature_sizes)
+      else:
+        reader = readers.YT8MAggregatedDistillationFeatureReader(
+            feature_names=feature_names, feature_sizes=feature_sizes)
     else:
-      reader = readers.YT8MAggregatedFeatureReader(
-          feature_names=feature_names, feature_sizes=feature_sizes)
+      if FLAGS.frame_features:
+        reader = readers.YT8MFrameFeatureReader(
+            feature_names=feature_names, feature_sizes=feature_sizes)
+      else:
+        reader = readers.YT8MAggregatedFeatureReader(
+            feature_names=feature_names, feature_sizes=feature_sizes)
 
     # Find the model.
     model = find_class_by_name(FLAGS.model,
