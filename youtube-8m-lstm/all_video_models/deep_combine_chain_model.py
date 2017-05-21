@@ -14,6 +14,7 @@ class DeepCombineChainModel(models.BaseModel):
                    dropout=False, keep_prob=None, noise_level=None,
                    num_frames=None,
                    **unused_params):
+
     num_supports = FLAGS.num_supports
     num_layers = FLAGS.deep_chain_layers
     relu_cells = FLAGS.deep_chain_relu_cells

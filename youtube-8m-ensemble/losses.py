@@ -77,7 +77,7 @@ class CrossEntropyLoss(BaseLoss):
   """Calculate the cross entropy loss between the predictions and labels.
   """
 
-  def calculate_loss(self, predictions, labels, **unused_params):
+  def calculate_loss(self, predictions, labels, weights=None, **unused_params):
     with tf.name_scope("loss_xent"):
       epsilon = 10e-6
       if FLAGS.label_smoothing:
@@ -87,7 +87,13 @@ class CrossEntropyLoss(BaseLoss):
       cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
           1 - float_labels) * tf.log(1 - predictions + epsilon)
       cross_entropy_loss = tf.negative(cross_entropy_loss)
-      return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
+      if weights is not None:
+        print cross_entropy_loss, weights
+        weighted_loss = tf.einsum("ij,i->ij", cross_entropy_loss, weights)
+        print "create weighted_loss", weighted_loss
+        return tf.reduce_mean(tf.reduce_sum(weighted_loss, 1))
+      else:
+        return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
 
 class HingeLoss(BaseLoss):
   """Calculate the hinge loss between the predictions and labels.
@@ -132,4 +138,57 @@ class SoftmaxLoss(BaseLoss):
       softmax_loss = tf.negative(tf.reduce_sum(
           tf.multiply(norm_float_labels, tf.log(softmax_outputs)), 1))
     return tf.reduce_mean(softmax_loss)
+
+class MultiTaskLoss(BaseLoss):
+  """This is a vitural loss
+  """
+  def calculate_loss(self, unused_predictions, unused_labels, **unused_params):
+    raise NotImplementedError()
+
+  def get_support(self, labels, support_type=None):
+    if support_type == None:
+      support_type = FLAGS.support_type
+    if "," in support_type:
+      new_labels = []
+      for st in support_type.split(","):
+        new_labels.append(tf.cast(self.get_support(labels, st), dtype=tf.float32))
+      support_labels = tf.concat(new_labels, axis=1)
+      return support_labels
+    elif support_type == "vertical":
+      num_classes = FLAGS.num_classes
+      num_verticals = FLAGS.num_verticals
+      vertical_file = FLAGS.vertical_file
+      vertical_mapping = np.zeros([num_classes, num_verticals], dtype=np.float32)
+      float_labels = tf.cast(labels, dtype=tf.float32)
+      with open(vertical_file) as F:
+        for line in F:
+          group = map(int, line.strip().split())
+          if len(group) == 2:
+            x, y = group
+            vertical_mapping[x, y] = 1
+      vm_init = tf.constant_initializer(vertical_mapping)
+      vm = tf.get_variable("vm", shape = [num_classes, num_verticals], 
+                           trainable=False, initializer=vm_init)
+      vertical_labels = tf.matmul(float_labels, vm)
+      return tf.cast(vertical_labels > 0.2, tf.float32)
+    elif support_type == "frequent":
+      num_frequents = FLAGS.num_frequents
+      frequent_labels = tf.slice(labels, begin=[0, 0], size=[-1, num_frequents])
+      frequent_labels = tf.cast(frequent_labels, dtype=tf.float32)
+      return frequent_labels
+    elif support_type == "label":
+      float_labels = tf.cast(labels, dtype=tf.float32)
+      return float_labels
+    else:
+      raise NotImplementedError()
+
+class MultiTaskCrossEntropyLoss(MultiTaskLoss):
+  """Calculate the loss between the predictions and labels.
+  """
+  def calculate_loss(self, predictions, support_predictions, labels, **unused_params):
+    support_labels = self.get_support(labels)
+    ce_loss_fn = CrossEntropyLoss()
+    cross_entropy_loss = ce_loss_fn.calculate_loss(predictions, labels, **unused_params)
+    cross_entropy_loss2 = ce_loss_fn.calculate_loss(support_predictions, support_labels, **unused_params)
+    return cross_entropy_loss * (1.0 - FLAGS.support_loss_percent) + cross_entropy_loss2 * FLAGS.support_loss_percent
 
