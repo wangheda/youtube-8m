@@ -1,6 +1,6 @@
 model=$1
 conf=$2
-validate_path=/Youtube-8M/model_predictions/ensemble_validate
+validate_path=/Youtube-8M/model_predictions/ensemble_train
 
 validate_data_patterns=""
 for d in $(cat $conf); do

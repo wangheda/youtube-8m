@@ -1,22 +1,33 @@
 #!/bin/bash
 
-extend_step_script="model_selection_scripts/extend-step-mean_model.sh"
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+model_name=$1
+
+extend_step_script="${DIR}/extend-step-mean_model.sh"
 train_path=/Youtube-8M/model_predictions/ensemble_train
-model_path="../model/mean_model"
+model_path="${DIR}/../../model/${model_name}"
 all_models_conf="${model_path}/all_models.conf"
 
-top_models_conf="${all_models_conf}"
-len_k_models_conf="${all_models_conf}"
+if [ -f $all_models_conf ]; then 
 
-for step in {1..19}; do 
+  top_models_conf="${all_models_conf}"
+  len_k_models_conf="${all_models_conf}"
 
-    if [ $step -gt 1 ]; then
-        len_k_models_conf="${model_path}/len_${step}_models.conf"
-        python model_selection_scripts/get_extend_candidates.py --top_k_file="$top_models_conf" --all_models_conf="${all_models_conf}" > $len_k_models_conf
-    fi
+  for step in {1..19}; do 
 
-    bash $extend_step_script ${len_k_models_conf} > ${model_path}/len_${step}_models.log
-    python model_selection_scripts/get_top_k.py --log_file="${model_path}/len_${step}_models.log" --sorted_log_file="${model_path}/len_${step}_models.sorted.log" > ${model_path}/top_${step}_models.conf
+      if [ $step -gt 1 ]; then
+          len_k_models_conf="${model_path}/len_${step}_models.conf"
+          python ${DIR}/get_extend_candidates.py --top_k_file="$top_models_conf" --all_models_conf="${all_models_conf}" > $len_k_models_conf
+      fi
 
-    top_models_conf="${model_path}/top_${step}_models.conf"
-done
+      bash $extend_step_script $model_name ${len_k_models_conf} > ${model_path}/len_${step}_models.log
+      python ${DIR}/get_top_k.py --top_k=3 --log_file="${model_path}/len_${step}_models.log" --sorted_log_file="${model_path}/len_${step}_models.sorted.log" > ${model_path}/top_${step}_models.conf
+
+      top_models_conf="${model_path}/top_${step}_models.conf"
+  done
+
+else
+
+  echo $all_models_conf not found, did nothing
+
+fi
