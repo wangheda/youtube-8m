@@ -1,5 +1,5 @@
 #!/bin/bash
-DEFAULT_GPU_ID=1
+DEFAULT_GPU_ID=0
 
 if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
   GPU_ID=$DEFAULT_GPU_ID
@@ -12,7 +12,8 @@ fi
 # base_model or sub_model_1 or sub_model_2 or so on
 model_type="$1"
 
-model_name="lstmparalleloutput_boosting_weightclip"
+model_name="distillation_lstmcnn_dcc_boosting"
+MODEL="LstmCnnDeepCombineChainModel"
 MODEL_DIR="../model/${model_name}"
 
 vocab_file="resources/train.video_id.vocab"
@@ -48,29 +49,39 @@ if [ $model_type == "base_model" ]; then
 
   CUDA_VISIBLE_DEVICES="$GPU_ID" python train.py \
     --train_dir="$base_model_dir" \
-    --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
+    --train_data_pattern="/Youtube-8M/distillation/frame/train/*.tfrecord" \
     --frame_features=True \
     --feature_names="rgb,audio" \
     --feature_sizes="1024,128" \
+    --distillation_features=True \
+    --distillation_type=1 \
+    --distillation_percent=0.5 \
     --reweight=True \
     --sample_vocab_file="$vocab_file" \
     --sample_freq_file="$default_freq_file" \
-    --model=LstmParallelFinaloutputModel \
+    --model=$MODEL \
+    --deep_chain_layers=2 \
+    --deep_chain_relu_cells=128 \
+    --moe_num_mixtures=4 \
+    --lstm_layers=1 \
     --lstm_cells="1024,128" \
-    --moe_num_mixtures=8 \
     --rnn_swap_memory=True \
-    --base_learning_rate=0.0008 \
-    --num_readers=2 \
-    --num_epochs=3 \
+    --multitask=True \
+    --label_loss=MultiTaskCrossEntropyLoss \
+    --support_type="label,label" \
+    --support_loss_percent=0.07 \
+    --base_learning_rate=0.001 \
+    --num_readers=4 \
+    --num_epochs=4 \
     --batch_size=128 \
-    --keep_checkpoint_every_n_hour=2.0
+    --keep_checkpoint_every_n_hour=6.0
 
 elif [[ $model_type =~ ^sub_model ]]; then
 
   last_freq_file=$default_freq_file
 
   # sub model
-  for i in {1..8}; do
+  for i in {1..4}; do
     sub_model_dir="${MODEL_DIR}/sub_model_${i}"
 
     if [ ! -d $sub_model_dir ]; then
@@ -79,22 +90,32 @@ elif [[ $model_type =~ ^sub_model ]]; then
       # train N models with re-weighted samples
       CUDA_VISIBLE_DEVICES="$GPU_ID" python train-with-rebuild.py \
           --train_dir="$sub_model_dir" \
-          --train_data_pattern="/Youtube-8M/data/frame/train/train*" \
+          --train_data_pattern="/Youtube-8M/distillation/frame/train/*.tfrecord" \
           --frame_features=True \
           --feature_names="rgb,audio" \
           --feature_sizes="1024,128" \
+          --distillation_features=True \
+          --distillation_type=1 \
+          --distillation_percent=0.5 \
           --reweight=True \
           --sample_vocab_file="resources/train.video_id.vocab" \
           --sample_freq_file="$last_freq_file" \
-          --model=LstmParallelFinaloutputModel \
+          --model=$MODEL \
+          --deep_chain_layers=2 \
+          --deep_chain_relu_cells=128 \
+          --moe_num_mixtures=4 \
+          --lstm_layers=1 \
           --lstm_cells="1024,128" \
-          --moe_num_mixtures=8 \
           --rnn_swap_memory=True \
-          --base_learning_rate=0.0008 \
-          --num_readers=2 \
-          --num_epochs=1 \
+          --multitask=True \
+          --label_loss=MultiTaskCrossEntropyLoss \
+          --support_type="label,label" \
+          --support_loss_percent=0.07 \
+          --base_learning_rate=0.001 \
+          --num_readers=4 \
+          --num_epochs=2 \
           --batch_size=128 \
-          --keep_checkpoint_every_n_hour=72.0 
+          --keep_checkpoint_every_n_hour=6.0
     fi
 
     # get error mapping
@@ -107,9 +128,12 @@ elif [[ $model_type =~ ^sub_model ]]; then
         --frame_features=True \
         --feature_names="rgb,audio" \
         --feature_sizes="1024,128" \
-        --model=LstmParallelFinaloutputModel \
+        --model=$MODEL \
+        --deep_chain_layers=2 \
+        --deep_chain_relu_cells=128 \
+        --moe_num_mixtures=4 \
+        --lstm_layers=1 \
         --lstm_cells="1024,128" \
-        --moe_num_mixtures=8 \
         --rnn_swap_memory=True \
         --batch_size=128 
     fi
@@ -131,12 +155,12 @@ elif [[ $model_type =~ ^sub_model ]]; then
   done
 
 elif [[ $model_type =~ ^ensemble ]]; then
-  for i in {1..8}; do
+  for i in {1..4}; do
     sub_model_dir="${MODEL_DIR}/sub_model_${i}"
 
     # inference-pre-ensemble
     for part in test ensemble_validate ensemble_train; do
-      output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/sub_model_${i}"
+      output_dir="/Youtube-8M/model_predictions_local/${part}/${model_name}/sub_model_${i}"
       if [ ! -d $output_dir ]; then
         CUDA_VISIBLE_DEVICES="$GPU_ID" python inference-pre-ensemble.py \
           --output_dir="$output_dir" \
@@ -145,9 +169,12 @@ elif [[ $model_type =~ ^ensemble ]]; then
           --frame_features=True \
           --feature_names="rgb,audio" \
           --feature_sizes="1024,128" \
-          --model=LstmParallelFinaloutputModel \
+          --model=$MODEL \
+          --deep_chain_layers=2 \
+          --deep_chain_relu_cells=128 \
+          --moe_num_mixtures=4 \
+          --lstm_layers=1 \
           --lstm_cells="1024,128" \
-          --moe_num_mixtures=8 \
           --rnn_swap_memory=True \
           --batch_size=64 \
           --file_size=4096
@@ -156,9 +183,9 @@ elif [[ $model_type =~ ^ensemble ]]; then
   done
 
   # on ensemble server
-  #cd ../youtube-8m-ensemble
+  cd ../youtube-8m-ensemble
   #CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
   #CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
-  #CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/infer-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+  #CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/preensemble-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 fi
 
