@@ -7,10 +7,10 @@ for file in $(ls $group_dir); do
     group_name="${file:0:-5}"
     model="virtual_grouping/${group_name}"
     model_dir="${group_dir}/${group_name}"
-    echo "training $model ..."
 
     if [ ! -d $model_dir ]; then
       conf="${group_dir}/${group_name}.conf"
+      echo "training $model ..."
       bash ensemble_scripts/train-matrix_model.sh $model $conf
       bash ensemble_scripts/eval-matrix_model.sh $model $conf
     fi
@@ -23,3 +23,12 @@ for file in $(ls $group_dir); do
     done
   fi
 done
+
+model_dir="${group_dir}/ensemble_matrix_model"
+if [ ! -d $model_dir ]; then
+  model="virtual_grouping/ensemble_matrix_model"
+  conf="${group_dir}/ensemble.conf"
+  echo "training $model ..."
+  bash ensemble_scripts/train-matrix_model.sh $model $conf
+  bash ensemble_scripts/eval-matrix_model.sh $model $conf
+fi

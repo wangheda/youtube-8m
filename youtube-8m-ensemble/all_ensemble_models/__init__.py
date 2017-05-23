@@ -1,5 +1,7 @@
 from logistic_model import *
 from moe_model import *
+from attention_moe_model import *
+from attention_moe_matrix_model import *
 from input_moe_model import *
 from linear_regression_model import *
 from matrix_regression_model import *
