@@ -65,10 +65,10 @@ if [ $model_type == "base_model" ]; then
     --positional_embedding_size=32 \
     --rnn_swap_memory=True \
     --base_learning_rate=0.001 \
-    --num_readers=2 \
+    --num_readers=4 \
     --num_epochs=3 \
-    --batch_size=128 \
-    --keep_checkpoint_every_n_hour=72.0
+    --batch_size=96 \
+    --keep_checkpoint_every_n_hour=6.0
 
 elif [[ $model_type =~ ^sub_model ]]; then
 
@@ -102,8 +102,8 @@ elif [[ $model_type =~ ^sub_model ]]; then
           --base_learning_rate=0.001 \
           --num_readers=2 \
           --num_epochs=2 \
-          --batch_size=128 \
-          --keep_checkpoint_every_n_hour=72.0 
+          --batch_size=96 \
+          --keep_checkpoint_every_n_hour=6.0
     fi
 
     # get error mapping
