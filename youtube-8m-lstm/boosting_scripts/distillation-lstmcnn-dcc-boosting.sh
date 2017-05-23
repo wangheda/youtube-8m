@@ -1,5 +1,5 @@
 #!/bin/bash
-DEFAULT_GPU_ID=1
+DEFAULT_GPU_ID=0
 
 if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
   GPU_ID=$DEFAULT_GPU_ID
@@ -12,8 +12,8 @@ fi
 # base_model or sub_model_1 or sub_model_2 or so on
 model_type="$1"
 
-model_name="distillation_positional_lstmattention8max_boosting"
-MODEL="LstmPositionalAttentionMaxPoolingModel"
+model_name="distillation_lstmcnn_dcc_boosting"
+MODEL="LstmCnnDeepCombineChainModel"
 MODEL_DIR="../model/${model_name}"
 
 vocab_file="resources/train.video_id.vocab"
@@ -60,14 +60,20 @@ if [ $model_type == "base_model" ]; then
     --sample_vocab_file="$vocab_file" \
     --sample_freq_file="$default_freq_file" \
     --model=$MODEL \
-    --moe_num_mixtures=8 \
-    --lstm_attentions=8 \
-    --positional_embedding_size=32 \
+    --deep_chain_layers=2 \
+    --deep_chain_relu_cells=128 \
+    --moe_num_mixtures=4 \
+    --lstm_layers=1 \
+    --lstm_cells="1024,128" \
     --rnn_swap_memory=True \
+    --multitask=True \
+    --label_loss=MultiTaskCrossEntropyLoss \
+    --support_type="label,label" \
+    --support_loss_percent=0.07 \
     --base_learning_rate=0.001 \
     --num_readers=4 \
-    --num_epochs=3 \
-    --batch_size=96 \
+    --num_epochs=4 \
+    --batch_size=128 \
     --keep_checkpoint_every_n_hour=6.0
 
 elif [[ $model_type =~ ^sub_model ]]; then
@@ -95,14 +101,20 @@ elif [[ $model_type =~ ^sub_model ]]; then
           --sample_vocab_file="resources/train.video_id.vocab" \
           --sample_freq_file="$last_freq_file" \
           --model=$MODEL \
-          --moe_num_mixtures=8 \
-          --lstm_attentions=8 \
-          --positional_embedding_size=32 \
+          --deep_chain_layers=2 \
+          --deep_chain_relu_cells=128 \
+          --moe_num_mixtures=4 \
+          --lstm_layers=1 \
+          --lstm_cells="1024,128" \
           --rnn_swap_memory=True \
+          --multitask=True \
+          --label_loss=MultiTaskCrossEntropyLoss \
+          --support_type="label,label" \
+          --support_loss_percent=0.07 \
           --base_learning_rate=0.001 \
-          --num_readers=2 \
+          --num_readers=4 \
           --num_epochs=2 \
-          --batch_size=96 \
+          --batch_size=128 \
           --keep_checkpoint_every_n_hour=6.0
     fi
 
@@ -117,9 +129,11 @@ elif [[ $model_type =~ ^sub_model ]]; then
         --feature_names="rgb,audio" \
         --feature_sizes="1024,128" \
         --model=$MODEL \
-        --moe_num_mixtures=8 \
-        --lstm_attentions=8 \
-        --positional_embedding_size=32 \
+        --deep_chain_layers=2 \
+        --deep_chain_relu_cells=128 \
+        --moe_num_mixtures=4 \
+        --lstm_layers=1 \
+        --lstm_cells="1024,128" \
         --rnn_swap_memory=True \
         --batch_size=128 
     fi
@@ -146,7 +160,7 @@ elif [[ $model_type =~ ^ensemble ]]; then
 
     # inference-pre-ensemble
     for part in test ensemble_validate ensemble_train; do
-      output_dir="/Youtube-8M/model_predictions/${part}/${model_name}/sub_model_${i}"
+      output_dir="/Youtube-8M/model_predictions_local/${part}/${model_name}/sub_model_${i}"
       if [ ! -d $output_dir ]; then
         CUDA_VISIBLE_DEVICES="$GPU_ID" python inference-pre-ensemble.py \
           --output_dir="$output_dir" \
@@ -156,9 +170,11 @@ elif [[ $model_type =~ ^ensemble ]]; then
           --feature_names="rgb,audio" \
           --feature_sizes="1024,128" \
           --model=$MODEL \
-          --moe_num_mixtures=8 \
-          --lstm_attentions=8 \
-          --positional_embedding_size=32 \
+          --deep_chain_layers=2 \
+          --deep_chain_relu_cells=128 \
+          --moe_num_mixtures=4 \
+          --lstm_layers=1 \
+          --lstm_cells="1024,128" \
           --rnn_swap_memory=True \
           --batch_size=64 \
           --file_size=4096

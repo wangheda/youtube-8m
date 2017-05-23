@@ -156,9 +156,9 @@ elif [[ $model_type =~ ^ensemble ]]; then
   done
 
   # on ensemble server
-  cd ../youtube-8m-ensemble
-  CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
-  CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+  #cd ../youtube-8m-ensemble
+  #CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/train-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
+  #CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/eval-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
   #CUDA_VISIBLE_DEVICES="$GPU_ID" bash ensemble_scripts/infer-matrix_model.sh ${model_name}/ensemble_matrix_model ${MODEL_DIR}/ensemble.conf
 fi
 
