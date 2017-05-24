@@ -43,6 +43,9 @@ if __name__ == '__main__':
   flags.DEFINE_string(
       "input_data_patterns", "",
       "File globs defining the evaluation dataset in tensorflow.SequenceExample format.")
+  flags.DEFINE_string(
+      "input_data_pattern", None,
+      "File globs for original model input.")
   flags.DEFINE_string("feature_names", "predictions", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "4716", "Length of the feature vectors.")
@@ -84,8 +87,10 @@ def get_input_data_tensors(reader,
         enqueue_many=True)
 
 def build_graph(all_readers,
-                model,
                 all_data_patterns,
+                input_reader,
+                input_data_pattern,
+                model,
                 label_loss_fn,
                 batch_size=256):
   """Creates the Tensorflow graph for evaluation.
@@ -116,6 +121,15 @@ def build_graph(all_readers,
     if video_id_batch is None:
       video_id_batch = unused_video_id
     model_input_raw_tensors.append(tf.expand_dims(model_input_raw, axis=2))
+
+  original_input = None
+  if input_data_pattern is not None:
+    unused_video_id, original_input, unused_labels_batch, unused_num_frames = (
+        get_input_data_tensors(
+            input_reader,
+            input_data_pattern,
+            batch_size=batch_size))
+
   model_input = tf.concat(model_input_raw_tensors, axis=2)
   labels_batch = labels_batch_tensor
 
@@ -123,6 +137,7 @@ def build_graph(all_readers,
     result = model.create_model(model_input,
                                 labels=labels_batch,
                                 vocab_size=reader.num_classes,
+                                original_input=original_input,
                                 is_training=False)
     predictions = result["predictions"]
     if "loss" in result.keys():
@@ -274,6 +289,13 @@ def main(unused_argv):
           feature_names=feature_names, feature_sizes=feature_sizes)
       all_readers.append(reader)
 
+    input_reader = None
+    input_data_pattern = None
+    if FLAGS.input_data_pattern is not None:
+      input_reader = readers.EnsembleReader(
+          feature_names=["input"], feature_sizes=[1024+128])
+      input_data_pattern = FLAGS.input_data_pattern
+
     model = find_class_by_name(FLAGS.model, [ensemble_level_models])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
 
@@ -283,10 +305,13 @@ def main(unused_argv):
 
     build_graph(
         all_readers=all_readers,
-        model=model,
+        input_reader=input_reader,
         all_data_patterns=all_patterns,
+        input_data_pattern=input_data_pattern,
+        model=model,
         label_loss_fn=label_loss_fn,
         batch_size=FLAGS.batch_size)
+
     logging.info("built evaluation graph")
     video_id_batch = tf.get_collection("video_id_batch")[0]
     prediction_batch = tf.get_collection("predictions")[0]

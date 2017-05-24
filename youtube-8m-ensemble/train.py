@@ -16,6 +16,8 @@
 import json
 import os
 import time
+import numpy
+import numpy as np
 
 import eval_util
 import losses
@@ -221,7 +223,7 @@ def build_graph(all_readers,
   model_input_raw_tensors = []
   labels_batch_tensor = None
   for reader, data_pattern in zip(all_readers, all_train_data_patterns):
-    unused_video_id, model_input_raw, labels_batch, unused_num_frames = (
+    video_id, model_input_raw, labels_batch, unused_num_frames = (
         get_input_data_tensors(
             reader,
             data_pattern,
