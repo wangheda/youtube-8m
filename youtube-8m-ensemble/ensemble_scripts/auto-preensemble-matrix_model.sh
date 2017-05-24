@@ -1,6 +1,7 @@
 model=$1
 conf=$2
 part=$3
+postfix=$4
 
 DEFAULT_GPU_ID=0
 if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
@@ -11,7 +12,7 @@ else
   echo "set CUDA_VISIBLE_DEVICES to external('$GPU_ID')"
 fi
 
-test_path=/Youtube-8M/model_predictions/${part}
+test_path=/Youtube-8M/model_predictions${postfix}/${part}
 test_data_patterns=""
 for d in $(cat $conf); do
   test_data_patterns="${test_path}/${d}/*.tfrecord${test_data_patterns:+,$test_data_patterns}"
