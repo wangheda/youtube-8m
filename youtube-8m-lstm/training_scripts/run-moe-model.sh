@@ -1,0 +1,13 @@
+python train.py \
+	--train_dir="../model/video_moe16_model" \
+	--train_data_pattern="/Youtube-8M/data/video/train/train*" \
+  --frame_features=False \
+	--feature_names="mean_rgb,mean_audio" \
+	--feature_sizes="1024,128" \
+	--model=MoeModel \
+	--moe_num_mixtures=16 \
+	--label_loss=CrossEntropyLoss \
+	--base_learning_rate=0.01 \
+	--keep_checkpoint_every_n_hours=0.25 \
+	--num_epochs=10 \
+	--batch_size=1024
