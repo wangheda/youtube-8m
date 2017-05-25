@@ -40,6 +40,9 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
     "attention_matrix_rank", 3,
     "The rank of weight matrix used for AttentionMatrixModel.")
+flags.DEFINE_integer(
+    "attention_relu_cells", 128,
+    "The rank of weight matrix used for AttentionMatrixModel.")
 
 import sys
 from os.path import dirname

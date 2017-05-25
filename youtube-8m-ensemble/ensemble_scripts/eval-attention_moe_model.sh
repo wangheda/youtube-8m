@@ -30,9 +30,9 @@ for checkpoint in $(cd $MODEL_DIR && python ${DIR}/training_utils/select.py $EVE
                 CUDA_VISIBLE_DEVICES="$GPU_ID" python eval.py \
                     --model_checkpoint_path="../model/${model}/model.ckpt-${checkpoint}" \
                     --train_dir="../model/${model}" \
-                    --model="AttentionMatrixModel" \
-                    --moe_num_mixtures=4 \
-                    --attention_matrix_rank=6 \
+                    --model=AttentionMoeModel \
+                    --moe_num_mixtures=8 \
+                    --attention_relu_cells=128 \
                     --eval_data_patterns="$validate_data_patterns" \
                     --input_data_pattern="$input_data_pattern"
         fi

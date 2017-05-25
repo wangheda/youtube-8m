@@ -27,6 +27,6 @@ CUDA_VISIBLE_DEVICES="$GPU_ID" python inference-pre-ensemble.py \
       --input_data_pattern="$input_data_pattern" \
       --model="AttentionMatrixModel" \
       --moe_num_mixtures=4 \
-      --attention_matrix_rank=3 \
+      --attention_matrix_rank=6 \
       --batch_size=1024 \
       --file_size=4096

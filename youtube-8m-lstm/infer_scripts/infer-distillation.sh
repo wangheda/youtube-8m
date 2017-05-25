@@ -6,7 +6,7 @@ cd ${DIR}/../
 
 model_name="distillation/video_chain_moe2_verydeep_combine"
 checkpoint="28403"
-for part in train; do 
+for part in ensemble_validate test ensemble_train; do 
   output_dir="/Youtube-8M/model_predictions/${part}/${model_name}"
   if [ ! -d $output_dir ]; then 
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
@@ -27,7 +27,7 @@ done
 
 model_name="distillation/cnn_deep_combine_chain"
 checkpoint="228332"
-for part in train; do 
+for part in ensemble_validate test ensemble_train; do 
   output_dir="/Youtube-8M/model_predictions/${part}/${model_name}"
   if [ ! -d $output_dir ]; then 
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
@@ -48,7 +48,7 @@ done
 
 model_name="distillation/lstmparallelfinaloutput1024_moe8"
 checkpoint="144351"
-for part in train; do 
+for part in ensemble_validate test ensemble_train; do 
   output_dir="/Youtube-8M/model_predictions/${part}/${model_name}"
   if [ ! -d $output_dir ]; then 
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
@@ -71,7 +71,7 @@ done
 cd ${DIR}/../../youtube-8m-cnn/
 model_name="distillation/frame_level_lstm_extend8_model"
 checkpoint="181785"
-for part in train; do 
+for part in ensemble_validate test ensemble_train; do 
   output_dir="/Youtube-8M/model_predictions/${part}/${model_name}"
   if [ ! -d $output_dir ]; then 
     CUDA_VISIBLE_DEVICES=0 python inference_with_rebuild.py \
@@ -89,6 +89,3 @@ for part in train; do
       --file_size=4096
   fi
 done
-
-
-
