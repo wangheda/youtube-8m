@@ -46,6 +46,16 @@ if __name__ == "__main__":
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
 
+
+  flags.DEFINE_string(
+      "distill_data_pattern", "",
+      "File glob defining the evaluation dataset in tensorflow.SequenceExample "
+      "format. The SequenceExamples are expected to have an 'rgb' byte array "
+      "sequence feature as well as a 'labels' int64 context feature.")
+  flags.DEFINE_string("distill_names", "predictions", "Name of the feature "
+                                                   "to use for training.")
+  flags.DEFINE_string("distill_sizes", "4716", "Length of the feature vectors.")
+
   # Model flags.
   flags.DEFINE_bool(
       "frame_features", False,
@@ -72,7 +82,7 @@ if __name__ == "__main__":
                       "Loss computed on validation data")
 
   # Other flags.
-  flags.DEFINE_integer("num_readers", 8,
+  flags.DEFINE_integer("num_readers", 2,
                        "How many threads to use for reading input files.")
   flags.DEFINE_boolean("run_once", False, "Whether to run eval only once.")
   flags.DEFINE_integer("top_k", 20, "How many predictions to output per video.")
@@ -110,12 +120,11 @@ def get_input_evaluation_tensors(reader,
     if not files:
       raise IOError("Unable to find the evaluation files.")
     logging.info("number of evaluation files: " + str(len(files)))
+    files.sort()
     filename_queue = tf.train.string_input_producer(
         files, shuffle=False, num_epochs=1)
-    eval_data = [
-        reader.prepare_reader(filename_queue) for _ in range(num_readers)
-    ]
-    return tf.train.batch_join(
+    eval_data = reader.prepare_reader(filename_queue)
+    return tf.train.batch(
         eval_data,
         batch_size=batch_size,
         capacity=3 * batch_size,
@@ -150,7 +159,7 @@ def build_graph(reader1,
       eval_data_pattern,
       batch_size=batch_size,
       num_readers=num_readers)
-  labels_distill = get_input_evaluation_tensors(  # pylint: disable=g-line-too-long
+  unused_id_batch, labels_distill, unused_labels_batch, unusednum_frames = get_input_evaluation_tensors(  # pylint: disable=g-line-too-long
       reader2,
       distill_data_pattern,
       batch_size=batch_size,
@@ -184,12 +193,13 @@ def build_graph(reader1,
   tf.add_to_collection("predictions", predictions)
   tf.add_to_collection("input_batch", model_input)
   tf.add_to_collection("video_id_batch", video_id_batch)
+  tf.add_to_collection("unused_id_batch", unused_id_batch)
   tf.add_to_collection("num_frames", num_frames)
   tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
   tf.add_to_collection("summary_op", tf.summary.merge_all())
 
 
-def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
+def evaluation_loop(video_id_batch, unused_id_batch, prediction_batch, label_batch, loss,
                     summary_op, saver, summary_writer, evl_metrics,
                     last_global_step_val):
   """Run the evaluation loop once.
@@ -235,7 +245,7 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
     sess.run([tf.local_variables_initializer()])
 
     # Start the queue runners.
-    fetches = [video_id_batch, prediction_batch, label_batch, loss, summary_op]
+    fetches = [video_id_batch, unused_id_batch, prediction_batch, label_batch, loss, summary_op]
     coord = tf.train.Coordinator()
     try:
       threads = []
@@ -251,7 +261,7 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
       examples_processed = 0
       while not coord.should_stop():
         batch_start_time = time.time()
-        _, predictions_val, labels_val, loss_val, summary_val = sess.run(
+        eval_id, distill_id, predictions_val, labels_val, loss_val, summary_val = sess.run(
             fetches)
         seconds_per_batch = time.time() - batch_start_time
         example_per_second = labels_val.shape[0] / seconds_per_batch
@@ -310,7 +320,7 @@ def evaluate():
     else:
       reader1 = readers.YT8MAggregatedFeatureReader(feature_names=feature_names,
                                                    feature_sizes=feature_sizes)
-    reader2 = readers.YT8MDistillationFeatureReader(
+    reader2 = readers.YT8MAggregatedFeatureReader(
         feature_names=distill_names, feature_sizes=distill_sizes)
 
     model = find_class_by_name(FLAGS.model,
@@ -332,6 +342,7 @@ def evaluate():
         batch_size=FLAGS.batch_size)
     logging.info("built evaluation graph")
     video_id_batch = tf.get_collection("video_id_batch")[0]
+    unused_id_batch = tf.get_collection("unused_id_batch")[0]
     prediction_batch = tf.get_collection("predictions")[0]
     label_batch = tf.get_collection("labels")[0]
     loss = tf.get_collection("loss")[0]
@@ -345,7 +356,7 @@ def evaluate():
 
     last_global_step_val = -1
     while True:
-      last_global_step_val = evaluation_loop(video_id_batch, prediction_batch,
+      last_global_step_val = evaluation_loop(video_id_batch, unused_id_batch, prediction_batch,
                                              label_batch, loss, summary_op,
                                              saver, summary_writer, evl_metrics,
                                              last_global_step_val)
