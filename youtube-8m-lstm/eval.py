@@ -43,6 +43,9 @@ if __name__ == "__main__":
       "File glob defining the evaluation dataset in tensorflow.SequenceExample "
       "format. The SequenceExamples are expected to have an 'rgb' byte array "
       "sequence feature as well as a 'labels' int64 context feature.")
+  flags.DEFINE_string(
+      "distill_data_pattern", None,
+      "File glob defining the distillation data pattern")
   flags.DEFINE_string("feature_names", "mean_rgb", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
@@ -89,36 +92,19 @@ def find_class_by_name(name, modules):
 
 def get_input_evaluation_tensors(reader,
                                  data_pattern,
-                                 batch_size=1024,
-                                 num_readers=1):
-  """Creates the section of the graph which reads the evaluation data.
+                                 batch_size=1024):
 
-  Args:
-    reader: A class which parses the training data.
-    data_pattern: A 'glob' style path to the data files.
-    batch_size: How many examples to process at a time.
-    num_readers: How many I/O threads to use.
-
-  Returns:
-    A tuple containing the features tensor, labels tensor, and optionally a
-    tensor containing the number of frames per video. The exact dimensions
-    depend on the reader being used.
-
-  Raises:
-    IOError: If no files matching the given pattern were found.
-  """
   logging.info("Using batch size of " + str(batch_size) + " for evaluation.")
   with tf.name_scope("eval_input"):
     files = gfile.Glob(data_pattern)
     if not files:
       raise IOError("Unable to find the evaluation files.")
     logging.info("number of evaluation files: " + str(len(files)))
+    files.sort()
     filename_queue = tf.train.string_input_producer(
         files, shuffle=False, num_epochs=1)
-    eval_data = [
-        reader.prepare_reader(filename_queue) for _ in range(num_readers)
-    ]
-    return tf.train.batch_join(
+    eval_data = reader.prepare_reader(filename_queue)
+    return tf.train.batch(
         eval_data,
         batch_size=batch_size,
         capacity=3 * batch_size,
@@ -132,6 +118,7 @@ def build_graph(reader,
                 label_loss_fn,
                 batch_size=1024,
                 transformer_class=feature_transform.DefaultTransformer,
+                distill_reader=None,
                 num_readers=1):
   """Creates the Tensorflow graph for evaluation.
 
@@ -150,9 +137,14 @@ def build_graph(reader,
   video_id_batch, model_input_raw, labels_batch, num_frames = get_input_evaluation_tensors(  # pylint: disable=g-line-too-long
       reader,
       eval_data_pattern,
-      batch_size=batch_size,
-      num_readers=num_readers)
+      batch_size=batch_size)
   tf.summary.histogram("model_input_raw", model_input_raw)
+
+  if distill_readers is not None:
+    unused_video_id_batch, distill_input_raw, unused_labels_batch, unused_num_frames = get_input_evaluation_tensors(  # pylint: disable=g-line-too-long
+        distill_reader,
+        FLAGS.distill_data_pattern,
+        batch_size=batch_size)
 
   feature_dim = len(model_input_raw.get_shape()) - 1
 
@@ -166,6 +158,11 @@ def build_graph(reader,
     else:
       noise_level_tensor = None
 
+    if distill_readers is not None:
+      distillation_predictions = distill_input_raw
+    else:
+      distillation_predictions = None
+
     if FLAGS.dropout:
       keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
       result = model.create_model(model_input,
@@ -174,12 +171,14 @@ def build_graph(reader,
                                 labels=labels_batch,
                                 dropout=FLAGS.dropout,
                                 keep_prob=keep_prob_tensor,
+                                distillation_predictions=distillation_predictions,
                                 is_training=False)
     else:
       result = model.create_model(model_input,
                                 num_frames=num_frames,
                                 vocab_size=reader.num_classes,
                                 labels=labels_batch,
+                                distillation_predictions=distillation_predictions,
                                 is_training=False)
     predictions = result["predictions"]
     tf.summary.histogram("model_activations", predictions)
@@ -337,6 +336,12 @@ def evaluate():
       reader = readers.YT8MAggregatedFeatureReader(feature_names=feature_names,
                                                    feature_sizes=feature_sizes)
 
+    if FLAGS.distill_data_pattern is not None:
+      distill_reader = readers.YT8MAggregatedFeatureReader(feature_names=["predictions"],
+                                                   feature_sizes=[4716])
+    else:
+      distill_reader = None
+
     model = find_class_by_name(FLAGS.model,
         [frame_level_models, video_level_models])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
@@ -353,7 +358,9 @@ def evaluate():
         label_loss_fn=label_loss_fn,
         num_readers=FLAGS.num_readers,
         transformer_class=transformer_class,
+        distill_reader=distill_reader,
         batch_size=FLAGS.batch_size)
+
     logging.info("built evaluation graph")
     video_id_batch = tf.get_collection("video_id_batch")[0]
     prediction_batch = tf.get_collection("predictions")[0]
