@@ -76,6 +76,19 @@ if __name__ == "__main__":
       "If set, this will not resume from a checkpoint and will instead create a"
       " new model instance.")
 
+  # Distillation flags
+  flags.DEFINE_bool(
+      "distillation_features", False,
+      "If set, *DistillationFeatureReader will be used, the feature must contains"
+      "prediction features (shape = [4716]).")
+  flags.DEFINE_integer(
+      "distillation_type", 2, "Type of distillation, options are 1 and 2.")
+  flags.DEFINE_float("distillation_percent", 0.5,
+      "If larger than 0, final_loss = distillation_loss * percent + normal_loss * (1.0 - percent).")
+
+  flags.DEFINE_float("gpu", 1.0,
+                     "Gpu memory percent.")
+
   # Training flags.
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch for training.")
@@ -237,14 +250,30 @@ def build_graph(reader,
       learning_rate_decay,
       staircase=True)
   tf.summary.scalar('learning_rate', learning_rate)
-
-  unused_video_id, model_input_raw, labels_batch, num_frames = (
-      get_input_data_tensors(
-          reader,
-          train_data_pattern,
-          batch_size=batch_size,
-          num_readers=num_readers,
-          num_epochs=num_epochs))
+  if FLAGS.distillation_features:
+      unused_video_id, model_input_raw, labels_batch, num_frames, distill_labels_batch = (
+          get_input_data_tensors(
+              reader,
+              train_data_pattern,
+              batch_size=batch_size,
+              num_readers=num_readers,
+              num_epochs=num_epochs))
+      if FLAGS.distillation_features and FLAGS.distillation_type == 2:
+          p = FLAGS.distillation_percent
+          print("distillation_percent =", p, "reforming labels")
+          float_labels = tf.cast(labels_batch, dtype=tf.float32)
+          sum_float_labels = tf.reduce_sum(float_labels, axis=1, keep_dims=True)
+          sum_distill_labels = tf.reduce_sum(distill_labels_batch, axis=1, keep_dims=True) + 1e-6
+          distill_labels_batch = float_labels + distill_labels_batch * (sum_float_labels / sum_distill_labels * p)
+          distill_labels_batch = tf.clip_by_value(distill_labels_batch, clip_value_min=0.0, clip_value_max=1.0)
+  else:
+      unused_video_id, model_input_raw, labels_batch, num_frames = (
+          get_input_data_tensors(
+              reader,
+              train_data_pattern,
+              batch_size=batch_size,
+              num_readers=num_readers,
+              num_epochs=num_epochs))
   tf.summary.histogram("model/input_raw", model_input_raw)
   
   feature_dim = len(model_input_raw.get_shape()) - 1
@@ -254,11 +283,19 @@ def build_graph(reader,
     model_input = model_input_raw
 
   with tf.name_scope("model"):
-    result = model.create_model(
-        model_input,
-        num_frames=num_frames,
-        vocab_size=reader.num_classes,
-        labels=labels_batch)
+    if FLAGS.distillation_features and FLAGS.distillation_type == 0:
+        result = model.create_model(
+            model_input,
+            num_frames=num_frames,
+            vocab_size=reader.num_classes,
+            labels=labels_batch,
+            distill_labels=distill_labels_batch)
+    else:
+        result = model.create_model(
+            model_input,
+            num_frames=num_frames,
+            vocab_size=reader.num_classes,
+            labels=labels_batch)
 
     for variable in slim.get_model_variables():
       tf.summary.histogram(variable.op.name, variable)
@@ -303,6 +340,12 @@ def build_graph(reader,
     if "predictions_encoder" in result.keys():
       label_loss, float_encoders = label_loss_fn.calculate_loss_mix2(predictions, predictions_class, predictions_encoder, labels_batch)
       tf.summary.histogram("model/float_encoders", float_encoders)
+    elif FLAGS.distillation_features and FLAGS.distillation_type == 1:
+        label_loss = label_loss_fn.calculate_loss_distill_boost(predictions, distill_labels_batch, labels_batch)
+    elif FLAGS.distillation_features and FLAGS.distillation_type == 2:
+      label_loss = label_loss_fn.calculate_loss_distill(predictions, distill_labels_batch, labels_batch)
+    elif FLAGS.distillation_features and FLAGS.distillation_type == 3:
+      label_loss = label_loss_fn.calculate_loss_distill_relabel(predictions, distill_labels_batch, labels_batch)
     elif "predictions_class" in result.keys():
       label_loss = label_loss_fn.calculate_loss_mix(predictions, predictions_class, labels_batch)
     elif "predictions_experts" in result.keys():
@@ -416,6 +459,7 @@ class Trainer(object):
     self.task = task
     self.is_master = (task.type == "master" and task.index == 0)
     self.train_dir = train_dir
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=FLAGS.gpu)
     self.config = tf.ConfigProto(log_device_placement=log_device_placement)
 
     if self.is_master and self.task.index > 0:
@@ -570,17 +614,25 @@ class Trainer(object):
     # Convert feature_names and feature_sizes to lists of values.
     feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
         FLAGS.feature_names, FLAGS.feature_sizes)
-
-    if FLAGS.frame_features:
-      if FLAGS.frame_only:
-          reader = readers.YT8MFrameFeatureOnlyReader(
-              feature_names=feature_names, feature_sizes=feature_sizes)
-      else:
-          reader = readers.YT8MFrameFeatureReader(
-              feature_names=feature_names, feature_sizes=feature_sizes)
+    if FLAGS.distillation_features:
+        print("distillation readers")
+        if FLAGS.frame_features:
+            reader = readers.YT8MFrameDistillationFeatureReader(
+                feature_names=feature_names, feature_sizes=feature_sizes)
+        else:
+            reader = readers.YT8MAggregatedDistillationFeatureReader(
+                feature_names=feature_names, feature_sizes=feature_sizes)
     else:
-      reader = readers.YT8MAggregatedFeatureReader(
-          feature_names=feature_names, feature_sizes=feature_sizes)
+        if FLAGS.frame_features:
+          if FLAGS.frame_only:
+              reader = readers.YT8MFrameFeatureOnlyReader(
+                  feature_names=feature_names, feature_sizes=feature_sizes)
+          else:
+              reader = readers.YT8MFrameFeatureReader(
+                  feature_names=feature_names, feature_sizes=feature_sizes)
+        else:
+          reader = readers.YT8MAggregatedFeatureReader(
+              feature_names=feature_names, feature_sizes=feature_sizes)
 
     # Find the model.
     model = find_class_by_name(FLAGS.model,
