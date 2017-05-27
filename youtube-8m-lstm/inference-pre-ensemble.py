@@ -50,6 +50,9 @@ if __name__ == '__main__':
       "File glob defining the evaluation dataset in tensorflow.SequenceExample "
       "format. The SequenceExamples are expected to have an 'rgb' byte array "
       "sequence feature as well as a 'labels' int64 context feature.")
+  flags.DEFINE_string(
+      "distill_data_pattern", None,
+      "File glob defining the distillation data pattern")
 
   # Model flags.
   flags.DEFINE_bool(
@@ -116,15 +119,13 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
     logging.info("number of input files: " + str(len(files)))
     filename_queue = tf.train.string_input_producer(
         files, num_epochs=1, shuffle=False)
-    examples_and_labels = [reader.prepare_reader(filename_queue)
-                           for _ in range(num_readers)]
-
+    examples_and_labels = reader.prepare_reader(filename_queue)
     video_id_batch, video_batch, unused_labels, num_frames_batch = (
-        tf.train.batch_join(examples_and_labels,
-                            batch_size=batch_size,
-                            capacity=batch_size * 8,
-                            allow_smaller_final_batch=True,
-                            enqueue_many=True))
+        tf.train.batch(examples_and_labels,
+                       batch_size=batch_size,
+                       capacity=batch_size * 8,
+                       allow_smaller_final_batch=True,
+                       enqueue_many=True))
     return video_id_batch, video_batch, unused_labels, num_frames_batch
 
 
@@ -133,14 +134,20 @@ def build_graph(reader,
                 input_data_pattern,
                 label_loss_fn=losses.CrossEntropyLoss(),
                 batch_size=1000,
+                distill_reader=None,
                 transformer_class=feature_transform.DefaultTransformer):
   
   video_id, model_input_raw, labels_batch, num_frames = (
       get_input_data_tensors(
           reader,
           input_data_pattern,
-          batch_size=batch_size,
-          num_readers=FLAGS.num_readers))
+          batch_size=batch_size))
+
+  if distill_reader is not None:
+    unused_video_id_batch, distill_input_raw, unused_labels_batch, unused_num_frames = get_input_data_tensors(  # pylint: disable=g-line-too-long
+        distill_reader,
+        FLAGS.distill_data_pattern,
+        batch_size=batch_size)
 
   feature_transformer = transformer_class()
   model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
@@ -151,6 +158,11 @@ def build_graph(reader,
     else:
       noise_level_tensor = None
 
+    if distill_reader is not None:
+      distillation_predictions = distill_input_raw
+    else:
+      distillation_predictions = None
+
     if FLAGS.dropout:
       keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
       result = model.create_model(
@@ -160,6 +172,7 @@ def build_graph(reader,
           labels=labels_batch,
           dropout=FLAGS.dropout,
           keep_prob=keep_prob_tensor,
+          distillation_predictions=distillation_predictions,
           noise_level=noise_level_tensor)
     else:
       result = model.create_model(
@@ -167,6 +180,7 @@ def build_graph(reader,
           num_frames=num_frames,
           vocab_size=reader.num_classes,
           labels=labels_batch,
+          distillation_predictions=distillation_predictions,
           noise_level=noise_level_tensor)
 
     print "result", result
@@ -313,6 +327,12 @@ def main(unused_argv):
     raise ValueError("'input_data_pattern' was not specified. "
       "Unable to continue with inference.")
 
+  if FLAGS.distill_data_pattern is not None:
+    distill_reader = readers.YT8MAggregatedFeatureReader(feature_names=["predictions"],
+                                                         feature_sizes=[4716])
+  else:
+    distill_reader = None
+
   model = find_class_by_name(FLAGS.model,
                              [frame_level_models, video_level_models])()
   transformer_fn = find_class_by_name(FLAGS.feature_transformer, 
@@ -322,6 +342,7 @@ def main(unused_argv):
               model,
               input_data_pattern=FLAGS.input_data_pattern,
               batch_size=FLAGS.batch_size,
+              distill_reader=distill_reader,
               transformer_class=transformer_fn)
 
   saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=10000000000)

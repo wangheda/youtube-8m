@@ -56,6 +56,8 @@ if __name__ == "__main__":
       "prediction features (shape = [4716]).")
   flags.DEFINE_integer(
       "distillation_type", 0, "Type of distillation, options are 1 and 2.")
+  flags.DEFINE_bool(
+      "distillation_as_input", False, "If set true, distillation_predictions will be given to model.")
   flags.DEFINE_float("distillation_percent", 0.0,
                      "If larger than 0, final_loss = distillation_loss * percent + normal_loss * (1.0 - percent).")
 
@@ -335,6 +337,11 @@ def build_graph(reader,
     else:
       noise_level_tensor = None
 
+    if FLAGS.distillation_as_input:
+      distillation_predictions = distill_labels_batch
+    else:
+      distillation_predictions = None
+
     if FLAGS.dropout:
       keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
       result = model.create_model(
@@ -344,6 +351,7 @@ def build_graph(reader,
           labels=labels_batch,
           dropout=FLAGS.dropout,
           keep_prob=keep_prob_tensor,
+          distillation_predictions=distillation_predictions,
           noise_level=noise_level_tensor)
     else:
       result = model.create_model(
@@ -351,6 +359,7 @@ def build_graph(reader,
           num_frames=num_frames,
           vocab_size=reader.num_classes,
           labels=labels_batch,
+          distillation_predictions=distillation_predictions,
           noise_level=noise_level_tensor)
 
     for variable in slim.get_model_variables():

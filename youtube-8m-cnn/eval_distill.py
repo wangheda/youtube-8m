@@ -19,7 +19,6 @@ import eval_util
 import losses
 import frame_level_models
 import video_level_models
-import feature_transform
 import readers
 import tensorflow as tf
 from tensorflow import app
@@ -43,18 +42,31 @@ if __name__ == "__main__":
       "File glob defining the evaluation dataset in tensorflow.SequenceExample "
       "format. The SequenceExamples are expected to have an 'rgb' byte array "
       "sequence feature as well as a 'labels' int64 context feature.")
-  flags.DEFINE_string(
-      "distill_data_pattern", None,
-      "File glob defining the distillation data pattern")
   flags.DEFINE_string("feature_names", "mean_rgb", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
+
+
+  flags.DEFINE_string(
+      "distill_data_pattern", "",
+      "File glob defining the evaluation dataset in tensorflow.SequenceExample "
+      "format. The SequenceExamples are expected to have an 'rgb' byte array "
+      "sequence feature as well as a 'labels' int64 context feature.")
+  flags.DEFINE_string("distill_names", "predictions", "Name of the feature "
+                                                   "to use for training.")
+  flags.DEFINE_string("distill_sizes", "4716", "Length of the feature vectors.")
 
   # Model flags.
   flags.DEFINE_bool(
       "frame_features", False,
       "If set, then --eval_data_pattern must be frame-level features. "
       "Otherwise, --eval_data_pattern must be aggregated video-level "
+      "features. The model must also be set appropriately (i.e. to read 3D "
+      "batches VS 4D batches.")
+  flags.DEFINE_bool(
+      "norm", True,
+      "If set, then --train_data_pattern must be frame-level features. "
+      "Otherwise, --train_data_pattern must be aggregated video-level "
       "features. The model must also be set appropriately (i.e. to read 3D "
       "batches VS 4D batches.")
   flags.DEFINE_string(
@@ -64,24 +76,16 @@ if __name__ == "__main__":
       "frame_level_models.py for the model definitions.")
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch.")
+  flags.DEFINE_integer("stride_size", 4,
+                       "How many examples to process per batch for training.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Loss computed on validation data")
 
   # Other flags.
-  flags.DEFINE_integer("num_readers", 8,
+  flags.DEFINE_integer("num_readers", 2,
                        "How many threads to use for reading input files.")
   flags.DEFINE_boolean("run_once", False, "Whether to run eval only once.")
   flags.DEFINE_integer("top_k", 20, "How many predictions to output per video.")
-  flags.DEFINE_bool(
-      "multitask", False,
-      "Whether to consider support_predictions")
-  flags.DEFINE_bool(
-      "dropout", False,
-      "Whether to consider dropout")
-  flags.DEFINE_float("keep_prob", 1.0, 
-      "probability to keep output (used in dropout, keep it unchanged in validationg and test)")
-  flags.DEFINE_float("noise_level", 0.0, 
-      "standard deviation of noise (added to hidden nodes)")
 
 
 def find_class_by_name(name, modules):
@@ -92,8 +96,24 @@ def find_class_by_name(name, modules):
 
 def get_input_evaluation_tensors(reader,
                                  data_pattern,
-                                 batch_size=1024):
+                                 batch_size=1024,
+                                 num_readers=1):
+  """Creates the section of the graph which reads the evaluation data.
 
+  Args:
+    reader: A class which parses the training data.
+    data_pattern: A 'glob' style path to the data files.
+    batch_size: How many examples to process at a time.
+    num_readers: How many I/O threads to use.
+
+  Returns:
+    A tuple containing the features tensor, labels tensor, and optionally a
+    tensor containing the number of frames per video. The exact dimensions
+    depend on the reader being used.
+
+  Raises:
+    IOError: If no files matching the given pattern were found.
+  """
   logging.info("Using batch size of " + str(batch_size) + " for evaluation.")
   with tf.name_scope("eval_input"):
     files = gfile.Glob(data_pattern)
@@ -112,13 +132,13 @@ def get_input_evaluation_tensors(reader,
         enqueue_many=True)
 
 
-def build_graph(reader,
+def build_graph(reader1,
+                reader2,
                 model,
                 eval_data_pattern,
+                distill_data_pattern,
                 label_loss_fn,
                 batch_size=1024,
-                transformer_class=feature_transform.DefaultTransformer,
-                distill_reader=None,
                 num_readers=1):
   """Creates the Tensorflow graph for evaluation.
 
@@ -135,77 +155,51 @@ def build_graph(reader,
 
   global_step = tf.Variable(0, trainable=False, name="global_step")
   video_id_batch, model_input_raw, labels_batch, num_frames = get_input_evaluation_tensors(  # pylint: disable=g-line-too-long
-      reader,
+      reader1,
       eval_data_pattern,
-      batch_size=batch_size)
+      batch_size=batch_size,
+      num_readers=num_readers)
+  unused_id_batch, labels_distill, unused_labels_batch, unusednum_frames = get_input_evaluation_tensors(  # pylint: disable=g-line-too-long
+      reader2,
+      distill_data_pattern,
+      batch_size=batch_size,
+      num_readers=num_readers)
   tf.summary.histogram("model_input_raw", model_input_raw)
-
-  if distill_reader is not None:
-    unused_video_id_batch, distill_input_raw, unused_labels_batch, unused_num_frames = get_input_evaluation_tensors(  # pylint: disable=g-line-too-long
-        distill_reader,
-        FLAGS.distill_data_pattern,
-        batch_size=batch_size)
 
   feature_dim = len(model_input_raw.get_shape()) - 1
 
   # Normalize input features.
-  feature_transformer = transformer_class()
-  model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
+  if FLAGS.norm:
+      model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+  else:
+      model_input = model_input_raw
 
   with tf.name_scope("model"):
-    if FLAGS.noise_level > 0:
-      noise_level_tensor = tf.placeholder_with_default(0.0, shape=[], name="noise_level")
-    else:
-      noise_level_tensor = None
-
-    if distill_reader is not None:
-      distillation_predictions = distill_input_raw
-    else:
-      distillation_predictions = None
-
-    if FLAGS.dropout:
-      keep_prob_tensor = tf.placeholder_with_default(1.0, shape=[], name="keep_prob")
-      result = model.create_model(model_input,
+    result = model.create_model(model_input,
                                 num_frames=num_frames,
-                                vocab_size=reader.num_classes,
+                                vocab_size=reader1.num_classes,
                                 labels=labels_batch,
-                                dropout=FLAGS.dropout,
-                                keep_prob=keep_prob_tensor,
-                                distillation_predictions=distillation_predictions,
-                                is_training=False)
-    else:
-      result = model.create_model(model_input,
-                                num_frames=num_frames,
-                                vocab_size=reader.num_classes,
-                                labels=labels_batch,
-                                distillation_predictions=distillation_predictions,
+                                distill_labels=labels_distill,
                                 is_training=False)
     predictions = result["predictions"]
     tf.summary.histogram("model_activations", predictions)
     if "loss" in result.keys():
       label_loss = result["loss"]
     else:
-      if FLAGS.multitask:
-        support_predictions = result["support_predictions"]
-        label_loss = label_loss_fn.calculate_loss(predictions, support_predictions, labels_batch)
-      else:
-        label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
+      label_loss = label_loss_fn.calculate_loss(predictions, labels_batch)
 
   tf.add_to_collection("global_step", global_step)
   tf.add_to_collection("loss", label_loss)
   tf.add_to_collection("predictions", predictions)
   tf.add_to_collection("input_batch", model_input)
   tf.add_to_collection("video_id_batch", video_id_batch)
+  tf.add_to_collection("unused_id_batch", unused_id_batch)
   tf.add_to_collection("num_frames", num_frames)
   tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
   tf.add_to_collection("summary_op", tf.summary.merge_all())
-  if FLAGS.dropout:
-    tf.add_to_collection("keep_prob", keep_prob_tensor)
-  if FLAGS.noise_level > 0:
-    tf.add_to_collection("noise_level", noise_level_tensor)
 
 
-def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
+def evaluation_loop(video_id_batch, unused_id_batch, prediction_batch, label_batch, loss,
                     summary_op, saver, summary_writer, evl_metrics,
                     last_global_step_val):
   """Run the evaluation loop once.
@@ -226,7 +220,8 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
   """
 
   global_step_val = -1
-  with tf.Session() as sess:
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+  with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     if FLAGS.model_checkpoint_path:
       checkpoint = FLAGS.model_checkpoint_path
     else:
@@ -250,11 +245,7 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
     sess.run([tf.local_variables_initializer()])
 
     # Start the queue runners.
-    if FLAGS.dropout:
-      keep_prob_tensor = tf.get_collection("keep_prob")[0]
-    if FLAGS.noise_level > 0:
-      noise_level_tensor = tf.get_collection("noise_level")[0]
-    fetches = [video_id_batch, prediction_batch, label_batch, loss, summary_op]
+    fetches = [video_id_batch, unused_id_batch, prediction_batch, label_batch, loss, summary_op]
     coord = tf.train.Coordinator()
     try:
       threads = []
@@ -270,16 +261,8 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
       examples_processed = 0
       while not coord.should_stop():
         batch_start_time = time.time()
-
-        custom_feed = {}
-        if FLAGS.dropout:
-          custom_feed[keep_prob_tensor] = FLAGS.keep_prob
-        if FLAGS.noise_level > 0:
-          custom_feed[noise_level_tensor] = FLAGS.noise_level
-
-        _, predictions_val, labels_val, loss_val, summary_val = sess.run(
-            fetches, feed_dict=custom_feed)
-
+        eval_id, distill_id, predictions_val, labels_val, loss_val, summary_val = sess.run(
+            fetches)
         seconds_per_batch = time.time() - batch_start_time
         example_per_second = labels_val.shape[0] / seconds_per_batch
         examples_processed += labels_val.shape[0]
@@ -328,41 +311,38 @@ def evaluate():
     # convert feature_names and feature_sizes to lists of values
     feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
         FLAGS.feature_names, FLAGS.feature_sizes)
+    distill_names, distill_sizes = utils.GetListOfFeatureNamesAndSizes(
+        FLAGS.distill_names, FLAGS.distill_sizes)
 
     if FLAGS.frame_features:
-      reader = readers.YT8MFrameFeatureReader(feature_names=feature_names,
+      reader1 = readers.YT8MFrameFeatureReader(feature_names=feature_names,
                                               feature_sizes=feature_sizes)
     else:
-      reader = readers.YT8MAggregatedFeatureReader(feature_names=feature_names,
+      reader1 = readers.YT8MAggregatedFeatureReader(feature_names=feature_names,
                                                    feature_sizes=feature_sizes)
-
-    if FLAGS.distill_data_pattern is not None:
-      distill_reader = readers.YT8MAggregatedFeatureReader(feature_names=["predictions"],
-                                                   feature_sizes=[4716])
-    else:
-      distill_reader = None
+    reader2 = readers.YT8MAggregatedFeatureReader(
+        feature_names=distill_names, feature_sizes=distill_sizes)
 
     model = find_class_by_name(FLAGS.model,
         [frame_level_models, video_level_models])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
-    transformer_class = find_class_by_name(FLAGS.feature_transformer, [feature_transform])
 
     if FLAGS.eval_data_pattern is "":
       raise IOError("'eval_data_pattern' was not specified. " +
                      "Nothing to evaluate.")
 
     build_graph(
-        reader=reader,
+        reader1=reader1,
+        reader2=reader2,
         model=model,
         eval_data_pattern=FLAGS.eval_data_pattern,
+        distill_data_pattern=FLAGS.distill_data_pattern,
         label_loss_fn=label_loss_fn,
         num_readers=FLAGS.num_readers,
-        transformer_class=transformer_class,
-        distill_reader=distill_reader,
         batch_size=FLAGS.batch_size)
-
     logging.info("built evaluation graph")
     video_id_batch = tf.get_collection("video_id_batch")[0]
+    unused_id_batch = tf.get_collection("unused_id_batch")[0]
     prediction_batch = tf.get_collection("predictions")[0]
     label_batch = tf.get_collection("labels")[0]
     loss = tf.get_collection("loss")[0]
@@ -372,11 +352,11 @@ def evaluate():
     summary_writer = tf.summary.FileWriter(
         FLAGS.train_dir, graph=tf.get_default_graph())
 
-    evl_metrics = eval_util.EvaluationMetrics(reader.num_classes, FLAGS.top_k)
+    evl_metrics = eval_util.EvaluationMetrics(reader1.num_classes, FLAGS.top_k)
 
     last_global_step_val = -1
     while True:
-      last_global_step_val = evaluation_loop(video_id_batch, prediction_batch,
+      last_global_step_val = evaluation_loop(video_id_batch, unused_id_batch, prediction_batch,
                                              label_batch, loss, summary_op,
                                              saver, summary_writer, evl_metrics,
                                              last_global_step_val)
