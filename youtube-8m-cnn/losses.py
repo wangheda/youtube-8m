@@ -158,15 +158,16 @@ class CrossEntropyLoss(BaseLoss):
         cross_entropy_loss_1 = float_labels * tf.log(predictions + epsilon) + (
             1 - float_labels) * tf.log(1 - predictions + epsilon)
         float_labels_1 = float_labels[:,:vocab_size]
-        labels_smooth = tf.matmul(float_labels_1,embedding_mat)/tf.reduce_sum(float_labels_1,axis=1,keep_dims=True)*0.5+float_labels_1
-        labels_smooth = tf.clip_by_value(labels_smooth, 0.0, 1.0)
+        #labels_smooth = tf.matmul(float_labels_1,embedding_mat)/tf.reduce_sum(float_labels_1,axis=1,keep_dims=True)*0.5+float_labels_1*0.5
+        #labels_smooth = tf.clip_by_value(labels_smooth, 0.0, 1.0)
+        labels_smooth = tf.matmul(float_labels_1,embedding_mat)/tf.reduce_sum(float_labels_1,axis=1,keep_dims=True)
         float_classes = labels_smooth
         for i in range(labels_size//vocab_size-1):
           float_classes = tf.concat((float_classes,labels_smooth),axis=1)
         cross_entropy_loss_2 = float_classes * tf.log(predictions + epsilon) + (
             1 - float_classes) * tf.log(1 - predictions + epsilon)
 
-        cross_entropy_loss = cross_entropy_loss_1 + 0.5*cross_entropy_loss_2
+        cross_entropy_loss = cross_entropy_loss_1*0.5 + cross_entropy_loss_2*0.5
 
       else:
         cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
@@ -175,6 +176,70 @@ class CrossEntropyLoss(BaseLoss):
       cross_entropy_loss = tf.negative(cross_entropy_loss)
 
       return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1)) + margin_loss
+
+  def calculate_loss_distill(self, predictions, labels_distill, labels, **unused_params):
+    with tf.name_scope("loss_distill"):
+      print("loss_distill")
+      epsilon = 10e-6
+      float_labels = tf.cast(labels, tf.float32)
+      float_labels_distill = tf.cast(labels_distill, tf.float32)
+      embedding_mat = np.loadtxt("./resources/embedding_matrix.model")
+      vocab_size = embedding_mat.shape[1]
+      labels_size = float_labels.get_shape().as_list()[1]
+      embedding_mat = tf.cast(embedding_mat,dtype=tf.float32)
+      cross_entropy_loss_1 = float_labels * tf.log(predictions + epsilon) + (
+          1 - float_labels) * tf.log(1 - predictions + epsilon)
+      float_labels_1 = float_labels[:,:vocab_size]
+      labels_smooth = tf.matmul(float_labels_1,embedding_mat)/tf.reduce_sum(float_labels_1,axis=1,keep_dims=True)
+      float_classes = labels_smooth
+      for i in range(labels_size//vocab_size-1):
+        float_classes = tf.concat((float_classes,labels_smooth),axis=1)
+      cross_entropy_loss_2 = float_classes * tf.log(predictions + epsilon) + (
+          1 - float_classes) * tf.log(1 - predictions + epsilon)
+      cross_entropy_loss_3 = float_labels_distill * tf.log(predictions + epsilon) + (
+          1 - float_labels_distill) * tf.log(1 - predictions + epsilon)
+
+      cross_entropy_loss = cross_entropy_loss_1*0.5 + cross_entropy_loss_2*0.5 + cross_entropy_loss_3*0.5
+      cross_entropy_loss = tf.negative(cross_entropy_loss)
+
+      return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
+
+  def calculate_loss_distill_boost(self, predictions, labels_distill, labels, **unused_params):
+    with tf.name_scope("loss_distill_boost"):
+      print("loss_distill_boost")
+      epsilon = 10e-6
+      float_labels = tf.cast(labels, tf.float32)
+      batch_size = tf.shape(float_labels)[0]
+      float_labels_distill = tf.cast(labels_distill, tf.float32)
+      error = tf.negative(float_labels * tf.log(float_labels_distill + epsilon) + (
+          1 - float_labels) * tf.log(1 - float_labels_distill + epsilon))
+      error = tf.reduce_sum(error,axis=1,keep_dims=True)
+      alpha = error / tf.reduce_sum(error) * tf.cast(batch_size,dtype=tf.float32)
+      alpha = tf.clip_by_value(alpha, 0.5, 5)
+      alpha = alpha / tf.reduce_sum(alpha) * tf.cast(batch_size,dtype=tf.float32)
+      cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
+          1 - float_labels) * tf.log(1 - predictions + epsilon)
+      cross_entropy_loss = tf.negative(cross_entropy_loss * alpha)
+
+      return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
+
+  def calculate_loss_distill_relabel(self, predictions, labels_distill, labels, **unused_params):
+    with tf.name_scope("loss_distill_relabel"):
+      print("loss_distill_relabel")
+      epsilon = 10e-6
+      float_labels = tf.cast(labels, tf.float32)
+      sum_labels = tf.cast(tf.reduce_sum(float_labels),dtype=tf.int32)
+      pos_distill, _ = tf.nn.top_k(tf.reshape(labels_distill,[-1]), k=sum_labels)
+      labels_true = tf.ones(tf.shape(labels))
+      labels_false = tf.zeros(tf.shape(labels))
+      labels_add = tf.where(tf.greater_equal(labels_distill, pos_distill[-1]), labels_true, labels_false)
+      print(labels_add.get_shape().as_list())
+      float_labels = float_labels+labels_add*(1.0-float_labels)
+      cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
+          1 - float_labels) * tf.log(1 - predictions + epsilon)
+      cross_entropy_loss = tf.negative(cross_entropy_loss)
+
+      return tf.reduce_mean(tf.reduce_sum(cross_entropy_loss, 1))
 
   def calculate_loss_negative(self, predictions_pos, predictions_neg, labels, **unused_params):
     with tf.name_scope("loss_negative"):

@@ -76,6 +76,10 @@ flags.DEFINE_bool("is_training", False, "used in batch normalization.")
 
 flags.DEFINE_integer("multiscale_cnn_lstm_layers", 1, "number of layers in multiscale cnn_lstm.")
 
+flags.DEFINE_integer("frame_seg_relu_cells", 256, "number of relu cells in frame-seg model.")
+
+flags.DEFINE_integer("distillchain_relu_cells", 256, "number of relu cells in distillchain model.")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:
