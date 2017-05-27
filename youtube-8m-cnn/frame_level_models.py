@@ -2740,6 +2740,177 @@ class LstmMultiscaleModel(models.BaseModel):
         result["predictions"] = tf.reduce_sum(final_probilities*weight,axis=1)
         return result
 
+class LstmMultiscaleDitillChainModel(models.BaseModel):
+
+    def cnn(self,
+            model_input,
+            l2_penalty=1e-8,
+            num_filters = [1024, 1024, 1024],
+            filter_sizes = [1,2,3],
+            sub_scope="",
+            **unused_params):
+        max_frames = model_input.get_shape().as_list()[1]
+        num_features = model_input.get_shape().as_list()[2]
+
+        shift_inputs = []
+        for i in range(max(filter_sizes)):
+            if i == 0:
+                shift_inputs.append(model_input)
+            else:
+                shift_inputs.append(tf.pad(model_input, paddings=[[0,0],[i,0],[0,0]])[:,:max_frames,:])
+
+        cnn_outputs = []
+        for nf, fs in zip(num_filters, filter_sizes):
+            sub_input = tf.concat(shift_inputs[:fs], axis=2)
+            sub_filter = tf.get_variable(sub_scope+"cnn-filter-len%d"%fs,
+                                         shape=[num_features*fs, nf], dtype=tf.float32,
+                                         initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.1),
+                                         regularizer=tf.contrib.layers.l2_regularizer(l2_penalty))
+            cnn_outputs.append(tf.einsum("ijk,kl->ijl", sub_input, sub_filter))
+
+        cnn_output = tf.concat(cnn_outputs, axis=2)
+        cnn_output = slim.batch_norm(
+            cnn_output,
+            center=True,
+            scale=True,
+            is_training=FLAGS.train,
+            scope=sub_scope+"cluster_bn")
+        return cnn_output, max_frames
+
+    def sub_moe(self,model_input,
+                vocab_size,
+                distill_labels=None,
+                num_mixtures=None,
+                l2_penalty=1e-8,
+                scopename="",
+                **unused_params):
+        """Creates a Mixture of (Logistic) Experts model.
+
+         The model consists of a per-class softmax distribution over a
+         configurable number of logistic classifiers. One of the classifiers in the
+         mixture is not trained, and always predicts 0.
+
+        Args:
+          model_input: 'batch_size' x 'num_features' matrix of input features.
+          vocab_size: The number of classes in the dataset.
+          num_mixtures: The number of mixtures (excluding a dummy 'expert' that
+            always predicts the non-existence of an entity).
+          l2_penalty: How much to penalize the squared magnitudes of parameter
+            values.
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          batch_size x num_classes.
+        """
+        num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+        class_size = 256
+        if distill_labels is not None:
+            class_input = slim.fully_connected(
+                distill_labels,
+                class_size,
+                activation_fn=tf.nn.relu,
+                weights_regularizer=slim.l2_regularizer(l2_penalty),
+                scope="class_inputs"+scopename)
+            model_input = tf.concat((model_input,class_input),axis=1)
+        gate_activations = slim.fully_connected(
+            model_input,
+            vocab_size * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates"+scopename)
+        expert_activations = slim.fully_connected(
+            model_input,
+            vocab_size * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts"+scopename)
+
+        gating_distribution = tf.nn.softmax(tf.reshape(
+            gate_activations,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution = tf.nn.sigmoid(tf.reshape(
+            expert_activations,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+
+        final_probabilities_by_class_and_batch = tf.reduce_sum(
+            gating_distribution[:, :num_mixtures] * expert_distribution, 1)
+
+        final_probabilities = tf.reshape(final_probabilities_by_class_and_batch,
+                                         [-1, vocab_size])
+
+        return final_probabilities
+
+    def rnn(self, model_input, lstm_size, num_frames,sub_scope="", **unused_params):
+        """Creates a model which uses a stack of LSTMs to represent the video.
+
+        Args:
+          model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                       input features.
+          vocab_size: The number of classes in the dataset.
+          num_frames: A vector of length 'batch' which indicates the number of
+               frames for each video (before padding).
+
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          'batch_size' x 'num_classes'.
+        """
+        ## Batch normalize the input
+        stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=True)
+                for _ in range(1)
+                ],
+            state_is_tuple=True)
+        with tf.variable_scope("RNN-"+sub_scope):
+            outputs, state = tf.nn.dynamic_rnn(stacked_lstm, model_input,
+                                               sequence_length=num_frames,
+                                               swap_memory=True,
+                                               dtype=tf.float32)
+
+        state_out = tf.concat(map(lambda x: x.c, state), axis=1)
+
+        return state_out
+
+    def create_model(self, model_input, vocab_size, num_frames, distill_labels=None, l2_penalty=1e-8, **unused_params):
+
+        num_extend = FLAGS.moe_num_extend
+        num_layers = num_extend
+        lstm_size = FLAGS.lstm_cells
+        pool_size = 2
+        cnn_input = model_input
+        num_filters = [256, 256, 512]
+        filter_sizes = [1, 2, 3]
+        features_size = sum(num_filters)
+        final_probilities = []
+        moe_inputs = []
+
+        for layer in range(num_layers):
+            cnn_output, num_t = self.cnn(cnn_input, num_filters=num_filters, filter_sizes=filter_sizes, sub_scope="cnn%d"%(layer+1))
+            cnn_output = tf.nn.relu(cnn_output)
+            cnn_multiscale = self.rnn(cnn_output,lstm_size, num_frames,sub_scope="rnn%d"%(layer+1))
+            moe_inputs.append(cnn_multiscale)
+            final_probility = self.sub_moe(cnn_multiscale,vocab_size,distill_labels=distill_labels, scopename="moe%d"%(layer+1))
+            final_probilities.append(final_probility)
+            num_t = pool_size*(num_t//pool_size)
+            cnn_output = tf.reshape(cnn_output[:,:num_t,:],[-1,num_t//pool_size,pool_size,features_size])
+            cnn_input = tf.reduce_max(cnn_output, axis=2)
+            num_frames = tf.maximum(num_frames//pool_size,1)
+
+        final_probilities = tf.stack(final_probilities,axis=1)
+        moe_inputs = tf.stack(moe_inputs,axis=1)
+        weight2d = tf.get_variable("ensemble_weight2d",
+                                   shape=[num_extend, features_size, vocab_size],
+                                   regularizer=slim.l2_regularizer(1.0e-8))
+        weight = tf.nn.softmax(tf.einsum("aij,ijk->aik", moe_inputs, weight2d), dim=1)
+        result = {}
+        result["prediction_frames"] = tf.reshape(final_probilities,[-1,vocab_size])
+        result["predictions"] = tf.reduce_sum(final_probilities*weight,axis=1)
+        return result
+
 class LstmMultiscale2Model(models.BaseModel):
 
     def cnn(self,
@@ -4759,6 +4930,77 @@ class LstmExtendModel(models.BaseModel):
             vocab_size=vocab_size,
             **unused_params)
 
+class LstmExtendOrthoModel(models.BaseModel):
+
+    def create_model(self, model_input, vocab_size, num_frames,l2_penalty=1e-8, **unused_params):
+        """Creates a model which uses a stack of LSTMs to represent the video.
+
+        Args:
+          model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                       input features.
+          vocab_size: The number of classes in the dataset.
+          num_frames: A vector of length 'batch' which indicates the number of
+               frames for each video (before padding).
+
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          'batch_size' x 'num_classes'.
+        """
+        lstm_size = FLAGS.lstm_cells
+        number_of_layers = FLAGS.lstm_layers
+        num_extend = FLAGS.moe_num_extend
+        shape = model_input.get_shape().as_list()
+        frames_sum = tf.reduce_sum(tf.abs(model_input),axis=2)
+        frames_true = tf.ones(tf.shape(frames_sum))
+        frames_false = tf.zeros(tf.shape(frames_sum))
+        frames_bool = tf.where(tf.greater(frames_sum, frames_false), frames_true, frames_false)
+        frames_bool = tf.reshape(frames_bool,[-1,shape[1],1])
+
+        ## Batch normalize the input
+        stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=False)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=False)
+
+        with tf.variable_scope("RNN"):
+            outputs, state = tf.nn.dynamic_rnn(stacked_lstm, model_input,
+                                               sequence_length=num_frames,
+                                               swap_memory=True,
+                                               dtype=tf.float32)
+        def calculate_ortho(W):
+            index = tf.cast(tf.random_uniform([2])*num_extend, tf.int32)
+            vec_1 = W[:, index[0]]
+            vec_2 = W[:, index[1]]
+            ortho = tf.square(tf.reduce_sum(vec_1*vec_2))/(tf.reduce_sum(tf.square(vec_1))*tf.reduce_sum(tf.square(vec_2)))
+            return ortho
+        W1 = tf.Variable(tf.truncated_normal([lstm_size,num_extend], stddev=0.1), name="W1")
+        b1 = tf.Variable(tf.constant(0.1, shape=[num_extend]), name="b1")
+        W2 = tf.Variable(tf.truncated_normal([shape[2],num_extend], stddev=0.1), name="W2")
+        b2 = tf.Variable(tf.constant(0.1, shape=[num_extend]), name="b2")
+        tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W1)+calculate_ortho(W1))
+        tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b1))
+        tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(W2)+calculate_ortho(W1))
+        tf.add_to_collection(name=tf.GraphKeys.REGULARIZATION_LOSSES, value=l2_penalty*tf.nn.l2_loss(b2))
+        rnn_output = tf.reshape(outputs,[-1,lstm_size])
+        rnn_input = tf.reshape(model_input,[-1,shape[2]])
+        rnn_attention = tf.nn.softmax(tf.reshape(tf.nn.xw_plus_b(rnn_output,W1,b1)+tf.nn.xw_plus_b(rnn_input,W2,b2),[-1,shape[1],num_extend]),dim=1)*frames_bool
+        rnn_attention = rnn_attention/tf.reduce_sum(rnn_attention, axis=1, keep_dims=True)
+        rnn_attention = tf.transpose(rnn_attention,perm=[0,2,1])
+        rnn_out = tf.einsum('aij,ajk->aik', rnn_attention, outputs)
+
+        pooled = tf.reshape(rnn_out,[-1,lstm_size])
+
+        aggregated_model = getattr(video_level_models,
+                                   FLAGS.video_level_classifier_model)
+        return aggregated_model().create_model(
+            model_input=pooled,
+            vocab_size=vocab_size,
+            **unused_params)
+
 class LstmGateExtendModel(models.BaseModel):
 
     def rnn_gate(self, model_input, lstm_size, num_frames, l2_penalty=1e-8, sub_scope="", **unused_params):
@@ -4810,7 +5052,7 @@ class LstmGateExtendModel(models.BaseModel):
 
         return state_outputs
 
-    def create_model(self, model_input, vocab_size, num_frames,l2_penalty=1e-8, **unused_params):
+    def create_model(self, model_input, vocab_size, num_frames, l2_penalty=1e-8, **unused_params):
         """Creates a model which uses a stack of LSTMs to represent the video.
 
         Args:
@@ -5433,3 +5675,139 @@ class FrameRandomEvalModel(models.BaseModel):
         final_probabilities = tf.reduce_mean(predictions_frames,axis=1)
 
         return {"predictions": final_probabilities}
+
+class CnnDCCDistillChainModel(models.BaseModel):
+    """A softmax over a mixture of logistic models (with L2 regularization)."""
+
+    def cnn(self,
+            model_input,
+            l2_penalty=1e-8,
+            num_filters = [1024, 1024, 1024],
+            filter_sizes = [1,2,3],
+            sub_scope="",
+            **unused_params):
+        max_frames = model_input.get_shape().as_list()[1]
+        num_features = model_input.get_shape().as_list()[2]
+
+        shift_inputs = []
+        for i in range(max(filter_sizes)):
+            if i == 0:
+                shift_inputs.append(model_input)
+            else:
+                shift_inputs.append(tf.pad(model_input, paddings=[[0,0],[i,0],[0,0]])[:,:max_frames,:])
+
+        cnn_outputs = []
+        for nf, fs in zip(num_filters, filter_sizes):
+            sub_input = tf.concat(shift_inputs[:fs], axis=2)
+            sub_filter = tf.get_variable(sub_scope+"cnn-filter-len%d"%fs,
+                                         shape=[num_features*fs, nf], dtype=tf.float32,
+                                         initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.1),
+                                         regularizer=tf.contrib.layers.l2_regularizer(l2_penalty))
+            cnn_outputs.append(tf.einsum("ijk,kl->ijl", sub_input, sub_filter))
+
+        cnn_output = tf.concat(cnn_outputs, axis=2)
+        return cnn_output
+
+    def create_model(self, model_input, vocab_size, num_frames, num_mixtures=None,
+                     l2_penalty=1e-8, sub_scope="", distill_labels=None, original_input=None, **unused_params):
+        num_layers = FLAGS.moe_layers
+        relu_cells = 256
+        max_frames = model_input.get_shape().as_list()[1]
+        relu_layers = []
+        support_predictions = []
+
+        mask = self.get_mask(max_frames, num_frames)
+        mean_input = tf.einsum("ijk,ij->ik", model_input, mask) \
+                     / tf.expand_dims(tf.cast(num_frames, dtype=tf.float32), dim=1)
+        mean_relu = slim.fully_connected(
+            mean_input,
+            relu_cells,
+            activation_fn=tf.nn.relu,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope=sub_scope+"mean-relu")
+        mean_relu_norm = tf.nn.l2_normalize(mean_relu, dim=1)
+        relu_layers.append(mean_relu_norm)
+
+        cnn_output = self.cnn(model_input, num_filters=[relu_cells,relu_cells,relu_cells*2], filter_sizes=[1,2,3], sub_scope=sub_scope+"cnn0")
+        max_cnn_output = tf.reduce_max(cnn_output, axis=1)
+        normalized_cnn_output = tf.nn.l2_normalize(max_cnn_output, dim=1)
+        next_input = normalized_cnn_output
+
+        for layer in range(num_layers):
+            if layer==0:
+                sub_prediction = self.sub_model(next_input, vocab_size, distill_labels=distill_labels, sub_scope=sub_scope+"prediction-%d"%layer)
+            else:
+                sub_prediction = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"prediction-%d"%layer)
+            support_predictions.append(sub_prediction)
+
+            sub_relu = slim.fully_connected(
+                sub_prediction,
+                relu_cells,
+                activation_fn=tf.nn.relu,
+                weights_regularizer=slim.l2_regularizer(l2_penalty),
+                scope=sub_scope+"relu-%d"%layer)
+            relu_norm = tf.nn.l2_normalize(sub_relu, dim=1)
+            relu_layers.append(relu_norm)
+
+            cnn_output = self.cnn(model_input, num_filters=[relu_cells,relu_cells,relu_cells*2], filter_sizes=[1,2,3], sub_scope=sub_scope+"cnn%d"%(layer+1))
+            max_cnn_output = tf.reduce_max(cnn_output, axis=1)
+            normalized_cnn_output = tf.nn.l2_normalize(max_cnn_output, dim=1)
+            next_input = tf.concat([normalized_cnn_output] + relu_layers, axis=1)
+
+        main_predictions = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"-main")
+        support_predictions = tf.concat(support_predictions, axis=1)
+        return {"predictions": main_predictions, "predictions_class": support_predictions}
+
+    def sub_model(self, model_input, vocab_size, num_mixtures=None,
+                  l2_penalty=1e-8, sub_scope="", distill_labels=None,**unused_params):
+        num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+        class_size = 256
+        if distill_labels is not None:
+            class_input = slim.fully_connected(
+                distill_labels,
+                class_size,
+                activation_fn=tf.nn.relu,
+                weights_regularizer=slim.l2_regularizer(l2_penalty),
+                scope="class_inputs")
+            class_input = tf.nn.l2_normalize(class_input, dim=1)
+            model_input = tf.concat((model_input, class_input),axis=1)
+        gate_activations = slim.fully_connected(
+            model_input,
+            vocab_size * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates-"+sub_scope)
+        expert_activations = slim.fully_connected(
+            model_input,
+            vocab_size * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts-"+sub_scope)
+
+        gating_distribution = tf.nn.softmax(tf.reshape(
+            gate_activations,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution = tf.nn.sigmoid(tf.reshape(
+            expert_activations,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+        final_probabilities_by_class_and_batch = tf.reduce_sum(
+            gating_distribution[:, :num_mixtures] * expert_distribution, 1)
+        final_probabilities = tf.reshape(final_probabilities_by_class_and_batch,
+                                         [-1, vocab_size])
+        return final_probabilities
+
+    def get_mask(self, max_frames, num_frames):
+        mask_array = []
+        for i in range(max_frames + 1):
+            tmp = [0.0] * max_frames
+            for j in range(i):
+                tmp[j] = 1.0
+            mask_array.append(tmp)
+        mask_array = np.array(mask_array)
+        mask_init = tf.constant_initializer(mask_array)
+        mask_emb = tf.get_variable("mask_emb", shape = [max_frames + 1, max_frames],
+                                   dtype = tf.float32, trainable = False, initializer = mask_init)
+        mask = tf.nn.embedding_lookup(mask_emb, num_frames)
+        return mask
