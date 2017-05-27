@@ -140,7 +140,7 @@ def build_graph(reader,
       batch_size=batch_size)
   tf.summary.histogram("model_input_raw", model_input_raw)
 
-  if distill_readers is not None:
+  if distill_reader is not None:
     unused_video_id_batch, distill_input_raw, unused_labels_batch, unused_num_frames = get_input_evaluation_tensors(  # pylint: disable=g-line-too-long
         distill_reader,
         FLAGS.distill_data_pattern,
@@ -158,7 +158,7 @@ def build_graph(reader,
     else:
       noise_level_tensor = None
 
-    if distill_readers is not None:
+    if distill_reader is not None:
       distillation_predictions = distill_input_raw
     else:
       distillation_predictions = None
