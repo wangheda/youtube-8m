@@ -8,6 +8,6 @@ CUDA_VISIBLE_DEVICES="0" python train.py \
 	--train_dir="../model/video_logistic_model" \
 	--base_learning_rate=0.01 \
 	--keep_checkpoint_every_n_hours=0.25 \
-	--keep_checkpoint_interval=0.05 \
+	--keep_checkpoint_interval=5 \
 	--num_epochs=5 \
 	--batch_size=1024
