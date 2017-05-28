@@ -16,7 +16,7 @@ python inference.py \
       --output_file="../model/${model}/predictions.${model}.csv" \
       --model="AttentionMatrixModel" \
       --moe_num_mixtures=4 \
-      --attention_matrix_rank=6 \
+      --attention_matrix_rank=8 \
       --batch_size=1024 \
       --input_data_pattern="$input_data_pattern" \
       --input_data_patterns="$test_data_patterns"

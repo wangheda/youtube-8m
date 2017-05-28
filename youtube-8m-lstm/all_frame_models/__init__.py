@@ -2,6 +2,7 @@ from bilstm_model import *
 from biunilstm_model import *
 from cnn_kmax_model import *
 from dbof_model import *
+from frame_seg_model import *
 from deep_lstm_model import *
 from gru_pooling_model import *
 from gru_with_pooling_model import *
@@ -16,7 +17,9 @@ from lstm_memory_model import *
 from layernorm_lstm_memory_model import *
 from lstm_parallel_memory_model import *
 from lstm_parallel_finaloutput_model import *
+from distillchain_lstm_parallel_finaloutput_model import *
 from cnn_deep_combine_chain_model import *
+from distillchain_cnn_deep_combine_chain_model import *
 from positional_cnn_deep_combine_chain_model import *
 from multi_view_cnn_deep_combine_chain_model import *
 from lstm_cnn_deep_combine_chain_model import *
