@@ -74,7 +74,7 @@ elif [[ $model_type =~ ^sub_model ]]; then
   last_freq_file=$default_freq_file
 
   # sub model
-  for i in {1..4}; do
+  for i in {1..3}; do
     sub_model_dir="${MODEL_DIR}/sub_model_${i}"
 
     if [ ! -d $sub_model_dir ]; then
