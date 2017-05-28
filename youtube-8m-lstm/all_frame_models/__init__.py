@@ -19,6 +19,7 @@ from lstm_parallel_memory_model import *
 from lstm_parallel_finaloutput_model import *
 from distillchain_lstm_parallel_finaloutput_model import *
 from cnn_deep_combine_chain_model import *
+from distillchain_cnn_deep_combine_chain_model import *
 from positional_cnn_deep_combine_chain_model import *
 from multi_view_cnn_deep_combine_chain_model import *
 from lstm_cnn_deep_combine_chain_model import *
@@ -39,6 +40,7 @@ from progressive_attention_lstm_model import *
 from lstm_memory_multitask_model import *
 from lstm_memory_chain_model import *
 from lstm_memory_deep_chain_model import *
+from distillchain_lstm_memory_deep_combine_chain_model import *
 from lstm_memory_input_chain_model import *
 from lstm_memory_parallel_chain_model import *
 from wide_and_deep_model import *

@@ -63,7 +63,7 @@ if [ $model_type == "base_model" ]; then
     --lstm_cells="1024,128" \
     --moe_num_mixtures=8 \
     --rnn_swap_memory=True \
-    --base_learning_rate=0.0005 \
+    --base_learning_rate=0.0008 \
     --num_readers=2 \
     --num_epochs=2 \
     --batch_size=128 \
@@ -74,7 +74,7 @@ elif [[ $model_type =~ ^sub_model ]]; then
   last_freq_file=$default_freq_file
 
   # sub model
-  for i in {1..4}; do
+  for i in {1..3}; do
     sub_model_dir="${MODEL_DIR}/sub_model_${i}"
 
     if [ ! -d $sub_model_dir ]; then
@@ -97,7 +97,7 @@ elif [[ $model_type =~ ^sub_model ]]; then
           --lstm_cells="1024,128" \
           --moe_num_mixtures=8 \
           --rnn_swap_memory=True \
-          --base_learning_rate=0.0005 \
+          --base_learning_rate=0.0008 \
           --num_readers=2 \
           --num_epochs=2 \
           --batch_size=128 \
