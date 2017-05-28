@@ -1,5 +1,5 @@
 
-GPU_ID="0"
+GPU_ID="1"
 EVERY=1000
 MODEL=FrameSegModel
 MODEL_DIR="../model/frame_seg_model"
@@ -18,7 +18,7 @@ for checkpoint in $(cd $MODEL_DIR && python ${DIR}/training_utils/select.py $EVE
 			--frame_features=True \
 			--feature_names="rgb,audio" \
 			--feature_sizes="1024,128" \
-			--batch_size=128 \
+			--batch_size=32 \
       --feature_transformer=IdenticalTransformer \
 			--model=$MODEL \
 	    --moe_num_mixtures=16 \
