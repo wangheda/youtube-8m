@@ -55,6 +55,8 @@ flags.DEFINE_bool("train", True,
                     "The pooling method used in the DBoF cluster layer. "
                     "Choices are 'average' and 'max'.")
 
+flags.DEFINE_integer("cnn_cells", 256, "Number of LSTM cells.")
+
 class FrameLevelLogisticModel(models.BaseModel):
 
   def create_model(self, model_input, vocab_size, num_frames, **unused_params):
@@ -2882,7 +2884,8 @@ class LstmMultiscaleDitillChainModel(models.BaseModel):
         lstm_size = FLAGS.lstm_cells
         pool_size = 2
         cnn_input = model_input
-        num_filters = [256, 256, 512]
+        cnn_size = FLAGS.cnn_cells
+        num_filters = [cnn_size, cnn_size, cnn_size*2]
         filter_sizes = [1, 2, 3]
         features_size = sum(num_filters)
         final_probilities = []
@@ -2903,7 +2906,7 @@ class LstmMultiscaleDitillChainModel(models.BaseModel):
         final_probilities = tf.stack(final_probilities,axis=1)
         moe_inputs = tf.stack(moe_inputs,axis=1)
         weight2d = tf.get_variable("ensemble_weight2d",
-                                   shape=[num_extend, features_size, vocab_size],
+                                   shape=[num_extend, lstm_size, vocab_size],
                                    regularizer=slim.l2_regularizer(1.0e-8))
         weight = tf.nn.softmax(tf.einsum("aij,ijk->aik", moe_inputs, weight2d), dim=1)
         result = {}
