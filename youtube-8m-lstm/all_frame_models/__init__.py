@@ -23,6 +23,7 @@ from distillchain_cnn_deep_combine_chain_model import *
 from positional_cnn_deep_combine_chain_model import *
 from multi_view_cnn_deep_combine_chain_model import *
 from lstm_cnn_deep_combine_chain_model import *
+from distillchain_lstm_cnn_deep_combine_chain_model import *
 from deep_cnn_deep_combine_chain_model import *
 from cnn_lstm_memory_model import *
 from cnn_lstm_memory_multitask_model import *
