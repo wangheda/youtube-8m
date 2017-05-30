@@ -295,13 +295,20 @@ def build_graph(reader,
   tf.summary.scalar('learning_rate', learning_rate)
 
   optimizer = optimizer_class(learning_rate)
+
+  distill_video_id, distill_labels_batch, unused_labels_batch, unused_num_frames = (
+      get_input_data_tensors(
+          predictions_reader,
+          predictions_data_pattern,
+          batch_size=batch_size,
+          num_epochs=num_epochs))
+
   if FLAGS.distillation_features:
     video_id, model_input_raw, labels_batch, num_frames, distill_labels_batch = (
         get_input_data_tensors(
             reader,
             train_data_pattern,
             batch_size=batch_size,
-            num_readers=num_readers,
             num_epochs=num_epochs))
     if FLAGS.distillation_features and FLAGS.distillation_type == 2:
       p = FLAGS.distillation_percent
@@ -319,12 +326,7 @@ def build_graph(reader,
             batch_size=batch_size,
             num_epochs=num_epochs))
 
-  video_id, distill_labels_batch, labels_batch, num_frames = (
-      get_input_data_tensors(
-          predictions_reader,
-          predictions_data_pattern,
-          batch_size=batch_size,
-          num_epochs=num_epochs))
+  id_mismatch = tf.reduce_mean(tf.cast(tf.not_equal(video_id, distill_video_id), tf.float32))
 
   # data augmentation, will not persist in inference
   data_augmenter = augmenter_class()
@@ -336,6 +338,7 @@ def build_graph(reader,
   model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
 
   tf.summary.histogram("model/input", model_input)
+  tf.summary.scalar("model/id_mismatch", id_mismatch)
 
   with tf.name_scope("model"):
     if FLAGS.noise_level > 0:
@@ -690,7 +693,7 @@ class Trainer(object):
     assert FLAGS.predictions_data_pattern is not None, "predictions data must be provided"
 
     predictions_reader = readers.YT8MAggregatedFeatureReader(
-            feature_names={"predictions"], feature_sizes=[4716])
+            feature_names=["predictions"], feature_sizes=[4716])
 
     # Find the model.
     model = find_class_by_name(FLAGS.model,
