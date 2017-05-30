@@ -53,7 +53,7 @@ if __name__ == '__main__':
                        "How many examples to process per batch.")
   flags.DEFINE_integer("file_size", 4096,
                        "Number of frames per batch for DBoF.")
-  flags.DEFINE_integer("file_num_mod", 0,
+  flags.DEFINE_integer("file_num_mod", None,
                        "file_num % 3 == file_num_mod will be output.")
 
 def find_class_by_name(name, modules):
@@ -152,7 +152,7 @@ def inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, pred
         ids_val = None
         ids_val, labels_val, rgbs_val, audios_val, predictions_val, num_frames_val = sess.run(fetches)
 
-        if filenum % 3 == FLAGS.file_num_mod:
+        if filenum % 3 == FLAGS.file_num_mod or FLAGS.file_num_mod is None:
           video_ids.append(ids_val)
           video_labels.append(labels_val)
           video_rgbs.append(rgbs_val)
@@ -176,7 +176,7 @@ def inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, pred
         if num_examples_processed >= FLAGS.file_size:
           assert num_examples_processed==FLAGS.file_size, "num_examples_processed should be equal to %d"%FLAGS.file_size
 
-          if filenum % 3 == FLAGS.file_num_mod:
+          if filenum % 3 == FLAGS.file_num_mod or FLAGS.file_num_mod is None:
             video_ids = np.concatenate(video_ids, axis=0)
             video_labels = np.concatenate(video_labels, axis=0)
             video_rgbs = np.concatenate(video_rgbs, axis=0)
@@ -209,7 +209,7 @@ def inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, pred
         num_examples_processed += len(ids_val)
 
       if 0 < num_examples_processed <= FLAGS.file_size:
-        if filenum % 3 == FLAGS.file_num_mod:
+        if filenum % 3 == FLAGS.file_num_mod or FLAGS.file_num_mod is None:
           video_ids = np.concatenate(video_ids, axis=0)
           video_labels = np.concatenate(video_labels, axis=0)
           video_rgbs = np.concatenate(video_rgbs, axis=0)
