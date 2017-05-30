@@ -58,6 +58,8 @@ if __name__ == "__main__":
       "distillation_type", 0, "Type of distillation, options are 1 and 2.")
   flags.DEFINE_bool(
       "distillation_as_input", False, "If set true, distillation_predictions will be given to model.")
+  flags.DEFINE_bool(
+      "distillation_as_boosting", False, "If set true, distillation_predictions will be used in computation of weighted loss.")
   flags.DEFINE_float("distillation_percent", 0.0,
                      "If larger than 0, final_loss = distillation_loss * percent + normal_loss * (1.0 - percent).")
 
@@ -245,6 +247,18 @@ def get_video_weights(video_id_batch):
   video_weight_batch = tf.nn.embedding_lookup(weights_tensor, indexes)
   return video_weight_batch
 
+def get_weights_by_predictions(labels_batch, predictions):
+  epsilon = 1e-6
+  float_labels = tf.cast(labels_batch, dtype=tf.float32)
+  cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
+      1 - float_labels) * tf.log(1 - predictions + epsilon)
+  ce = tf.reduce_sum(tf.negative(cross_entropy_loss), axis=1)
+  mean_ce = tf.reduce_mean(ce + epsilon)
+  weights = tf.where(ce > mean_ce, 
+                     3.0 * tf.ones_like(ce),
+                     0.5 * tf.ones_like(ce))
+  return weights
+
 def build_graph(reader,
                 model,
                 train_data_pattern,
@@ -373,6 +387,10 @@ def build_graph(reader,
       video_weights_batch = None
       if FLAGS.reweight:
         video_weights_batch = get_video_weights(video_id)
+
+      if FLAGS.distillation_as_boosting:
+        video_weights_batch = get_weights_by_predictions(labels_batch, distillation_predictions)
+
       if FLAGS.multitask:
         support_predictions = result["support_predictions"]
         tf.summary.histogram("model/support_predictions", support_predictions)
