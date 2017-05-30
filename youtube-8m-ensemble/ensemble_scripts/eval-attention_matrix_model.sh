@@ -19,7 +19,7 @@ done
 echo "$validate_data_patterns"
 input_data_pattern="${validate_path}/model_input/*.tfrecord"
 
-EVERY=100
+EVERY=300
 DIR="$(pwd)"
 MODEL_DIR="${DIR}/../model/${model}" \
 
@@ -32,7 +32,7 @@ for checkpoint in $(cd $MODEL_DIR && python ${DIR}/training_utils/select.py $EVE
                     --train_dir="../model/${model}" \
                     --model="AttentionMatrixModel" \
                     --moe_num_mixtures=4 \
-                    --attention_matrix_rank=6 \
+                    --attention_matrix_rank=8 \
                     --eval_data_patterns="$validate_data_patterns" \
                     --input_data_pattern="$input_data_pattern"
         fi
