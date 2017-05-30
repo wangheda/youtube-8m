@@ -53,6 +53,8 @@ if __name__ == '__main__':
                        "How many examples to process per batch.")
   flags.DEFINE_integer("file_size", 4096,
                        "Number of frames per batch for DBoF.")
+  flags.DEFINE_integer("file_num_mod", 0,
+                       "file_num % 3 == file_num_mod will be output.")
 
 def find_class_by_name(name, modules):
   """Searches the provided modules for the named class and returns it."""
@@ -138,8 +140,6 @@ def inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, pred
     directory = FLAGS.output_dir
     if not os.path.exists(directory):
         os.makedirs(directory)
-    else:
-        raise IOError("Output path exists! path='" + directory + "'")
 
     try:
       threads = []
@@ -152,12 +152,13 @@ def inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, pred
         ids_val = None
         ids_val, labels_val, rgbs_val, audios_val, predictions_val, num_frames_val = sess.run(fetches)
 
-        video_ids.append(ids_val)
-        video_labels.append(labels_val)
-        video_rgbs.append(rgbs_val)
-        video_audios.append(audios_val)
-        video_predictions.append(predictions_val)
-        video_num_frames.append(num_frames_val)
+        if filenum % 3 == FLAGS.file_num_mod:
+          video_ids.append(ids_val)
+          video_labels.append(labels_val)
+          video_rgbs.append(rgbs_val)
+          video_audios.append(audios_val)
+          video_predictions.append(predictions_val)
+          video_num_frames.append(num_frames_val)
 
         num_examples_processed += len(ids_val)
 
@@ -174,14 +175,15 @@ def inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, pred
 
         if num_examples_processed >= FLAGS.file_size:
           assert num_examples_processed==FLAGS.file_size, "num_examples_processed should be equal to %d"%FLAGS.file_size
-          video_ids = np.concatenate(video_ids, axis=0)
-          video_labels = np.concatenate(video_labels, axis=0)
-          video_rgbs = np.concatenate(video_rgbs, axis=0)
-          video_audios = np.concatenate(video_audios, axis=0)
-          video_predictions = np.concatenate(video_predictions, axis=0)
-          video_num_frames = np.concatenate(video_num_frames, axis=0)
 
-          write_to_record(video_ids, video_labels, video_rgbs, video_audios, video_predictions, video_num_frames, filenum, num_examples_processed)
+          if filenum % 3 == FLAGS.file_num_mod:
+            video_ids = np.concatenate(video_ids, axis=0)
+            video_labels = np.concatenate(video_labels, axis=0)
+            video_rgbs = np.concatenate(video_rgbs, axis=0)
+            video_audios = np.concatenate(video_audios, axis=0)
+            video_predictions = np.concatenate(video_predictions, axis=0)
+            video_num_frames = np.concatenate(video_num_frames, axis=0)
+            write_to_record(video_ids, video_labels, video_rgbs, video_audios, video_predictions, video_num_frames, filenum, num_examples_processed)
 
           video_ids = []
           video_labels = []
@@ -207,13 +209,15 @@ def inference_loop(video_ids_batch, labels_batch, rgbs_batch, audios_batch, pred
         num_examples_processed += len(ids_val)
 
       if 0 < num_examples_processed <= FLAGS.file_size:
-        video_ids = np.concatenate(video_ids, axis=0)
-        video_labels = np.concatenate(video_labels, axis=0)
-        video_rgbs = np.concatenate(video_rgbs, axis=0)
-        video_audios = np.concatenate(video_audios, axis=0)
-        video_predictions = np.concatenate(video_predictions, axis=0)
-        video_num_frames = np.concatenate(video_num_frames, axis=0)
-        write_to_record(video_ids, video_labels, video_rgbs, video_audios, video_predictions, video_num_frames, filenum, num_examples_processed)
+        if filenum % 3 == FLAGS.file_num_mod:
+          video_ids = np.concatenate(video_ids, axis=0)
+          video_labels = np.concatenate(video_labels, axis=0)
+          video_rgbs = np.concatenate(video_rgbs, axis=0)
+          video_audios = np.concatenate(video_audios, axis=0)
+          video_predictions = np.concatenate(video_predictions, axis=0)
+          video_num_frames = np.concatenate(video_num_frames, axis=0)
+          write_to_record(video_ids, video_labels, video_rgbs, video_audios, video_predictions, video_num_frames, filenum, num_examples_processed)
+
         total_num_examples_processed += num_examples_processed
 
         now = time.time()
@@ -244,26 +248,18 @@ def write_to_record(video_ids, video_labels, video_rgbs, video_audios, video_pre
     writer.close()
 
 def get_output_feature(video_id, video_label, video_rgb, video_audio, video_prediction, video_num_frame):
-    example = tf.train.SequenceExample()
-    example.context.feature["video_id"].bytes_list.value.append(video_id)
-    for l in video_label:
-      example.context.feature["labels"].int64_list.value.append(l)
-
-    prediction_feature_names = FLAGS.prediction_feature_names.split(",")
-    prediction_feature_sizes = map(int, FLAGS.prediction_feature_sizes.split(","))
-
-    s = 0
-    for i in range(len(prediction_feature_names)):
-        for f in video_prediction[s: s + prediction_feature_sizes[i]]:
-          example.context.feature[prediction_feature_names[i]].float_list.value.append(f)
-        s += prediction_feature_sizes[i]
-
-    for rgb in video_rgb[:video_num_frame]:
-      example.feature_lists.feature_list["rgb"].feature.add().bytes_list.value.append(rgb)
-
-    for audio in video_audio[:video_num_frame]:
-      example.feature_lists.feature_list["audio"].feature.add().bytes_list.value.append(audio)
-
+    _bytes_feature_list = lambda x: tf.train.Feature(bytes_list=tf.train.BytesList(value=[x]))
+    example = tf.train.SequenceExample(
+        context = tf.train.Features(feature={
+            "video_id": tf.train.Feature(bytes_list=tf.train.BytesList(value=[video_id])),
+            "labels": tf.train.Feature(int64_list=tf.train.Int64List(value=video_label)),
+            "predictions": tf.train.Feature(float_list=tf.train.FloatList(value=video_prediction))
+        }),
+        feature_lists = tf.train.FeatureLists(feature_list={
+            "rgb": tf.train.FeatureList(feature=map(_bytes_feature_list, video_rgb[:video_num_frame])),
+            "audio": tf.train.FeatureList(feature=map(_bytes_feature_list, video_audio[:video_num_frame])),
+        })
+    )
     return example
 
 def main(unused_argv):
