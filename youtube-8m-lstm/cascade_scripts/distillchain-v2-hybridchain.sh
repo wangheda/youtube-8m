@@ -141,9 +141,9 @@ if [ $task == "train" ]; then
 	    --moe_num_mixtures=8 \
       --lstm_cells="1024,128" \
       --batch_size=128 \
-      --base_learning_rate=0.0008 \
       --num_epochs=1 \
       --keep_checkpoint_every_n_hours=20 \
+      --base_learning_rate=0.0008
   fi
 
 elif [ $task == "test-lstm" ]; then
@@ -180,6 +180,7 @@ elif [ $task == "test-lstm" ]; then
       fi
     done
   fi
+
 elif [ $task == "test-cnn" ]; then
 
   sub_model_name="distillchain_v2_cnn_dcc"
