@@ -45,6 +45,7 @@ if __name__ == "__main__":
       "features (i.e. tensorflow.SequenceExample), then set --reader_type "
       "format. The (Sequence)Examples are expected to have 'rgb' byte array "
       "sequence feature as well as a 'labels' int64 context feature.")
+  flags.DEFINE_string("predictions_data_pattern", None, "File glob for predictions data")
   flags.DEFINE_string("feature_names", "mean_rgb", "Name of the feature "
                       "to use for training.")
   flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
@@ -58,8 +59,6 @@ if __name__ == "__main__":
       "distillation_type", 0, "Type of distillation, options are 1 and 2.")
   flags.DEFINE_bool(
       "distillation_as_input", False, "If set true, distillation_predictions will be given to model.")
-  flags.DEFINE_bool(
-      "distillation_as_boosting", False, "If set true, distillation_predictions will be used in computation of weighted loss.")
   flags.DEFINE_float("distillation_percent", 0.0,
                      "If larger than 0, final_loss = distillation_loss * percent + normal_loss * (1.0 - percent).")
 
@@ -166,9 +165,8 @@ def validate_class_name(flag_value, category, modules, expected_superclass):
 
 def get_input_data_tensors(reader,
                            data_pattern,
-                           batch_size=1000,
-                           num_epochs=None,
-                           num_readers=1):
+                           batch_size=128,
+                           num_epochs=None):
   """Creates the section of the graph which reads the training data.
 
   Args:
@@ -194,18 +192,16 @@ def get_input_data_tensors(reader,
       raise IOError("Unable to find training files. data_pattern='" +
                     data_pattern + "'.")
     logging.info("Number of training files: %s.", str(len(files)))
+    files.sort()
     filename_queue = tf.train.string_input_producer(
-        files, num_epochs=num_epochs, shuffle=True)
-    training_data = [
-        reader.prepare_reader(filename_queue) for _ in range(num_readers)
-    ]
+        files, num_epochs=num_epochs, shuffle=False)
+    training_data = reader.prepare_reader(filename_queue)
 
-    return tf.train.shuffle_batch_join(
+    return tf.train.batch(
         training_data,
         batch_size=batch_size,
         capacity=FLAGS.batch_size * 10,
-        min_after_dequeue=FLAGS.batch_size,
-        allow_smaller_final_batch=True,
+        allow_smaller_final_batch=False,
         enqueue_many=True)
 
 
@@ -247,21 +243,11 @@ def get_video_weights(video_id_batch):
   video_weight_batch = tf.nn.embedding_lookup(weights_tensor, indexes)
   return video_weight_batch
 
-def get_weights_by_predictions(labels_batch, predictions):
-  epsilon = 1e-6
-  float_labels = tf.cast(labels_batch, dtype=tf.float32)
-  cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
-      1 - float_labels) * tf.log(1 - predictions + epsilon)
-  ce = tf.reduce_sum(tf.negative(cross_entropy_loss), axis=1)
-  mean_ce = tf.reduce_mean(ce + epsilon)
-  weights = tf.where(ce > mean_ce, 
-                     3.0 * tf.ones_like(ce),
-                     0.5 * tf.ones_like(ce))
-  return weights
-
 def build_graph(reader,
-                model,
+                predictions_reader,
                 train_data_pattern,
+                predictions_data_pattern,
+                model,
                 label_loss_fn=losses.CrossEntropyLoss(),
                 batch_size=1000,
                 base_learning_rate=0.01,
@@ -309,13 +295,20 @@ def build_graph(reader,
   tf.summary.scalar('learning_rate', learning_rate)
 
   optimizer = optimizer_class(learning_rate)
+
+  distill_video_id, distill_labels_batch, unused_labels_batch, unused_num_frames = (
+      get_input_data_tensors(
+          predictions_reader,
+          predictions_data_pattern,
+          batch_size=batch_size,
+          num_epochs=num_epochs))
+
   if FLAGS.distillation_features:
     video_id, model_input_raw, labels_batch, num_frames, distill_labels_batch = (
         get_input_data_tensors(
             reader,
             train_data_pattern,
             batch_size=batch_size,
-            num_readers=num_readers,
             num_epochs=num_epochs))
     if FLAGS.distillation_features and FLAGS.distillation_type == 2:
       p = FLAGS.distillation_percent
@@ -331,8 +324,9 @@ def build_graph(reader,
             reader,
             train_data_pattern,
             batch_size=batch_size,
-            num_readers=num_readers,
             num_epochs=num_epochs))
+
+  id_mismatch = tf.reduce_mean(tf.cast(tf.not_equal(video_id, distill_video_id), tf.float32))
 
   # data augmentation, will not persist in inference
   data_augmenter = augmenter_class()
@@ -344,6 +338,7 @@ def build_graph(reader,
   model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
 
   tf.summary.histogram("model/input", model_input)
+  tf.summary.scalar("model/id_mismatch", id_mismatch)
 
   with tf.name_scope("model"):
     if FLAGS.noise_level > 0:
@@ -387,10 +382,6 @@ def build_graph(reader,
       video_weights_batch = None
       if FLAGS.reweight:
         video_weights_batch = get_video_weights(video_id)
-
-      if FLAGS.distillation_as_boosting:
-        video_weights_batch = get_weights_by_predictions(labels_batch, distillation_predictions)
-
       if FLAGS.multitask:
         support_predictions = result["support_predictions"]
         tf.summary.histogram("model/support_predictions", support_predictions)
@@ -699,6 +690,11 @@ class Trainer(object):
         reader = readers.YT8MAggregatedFeatureReader(
             feature_names=feature_names, feature_sizes=feature_sizes)
 
+    assert FLAGS.predictions_data_pattern is not None, "predictions data must be provided"
+
+    predictions_reader = readers.YT8MAggregatedFeatureReader(
+            feature_names=["predictions"], feature_sizes=[4716])
+
     # Find the model.
     model = find_class_by_name(FLAGS.model,
                                [frame_level_models, video_level_models])()
@@ -708,20 +704,22 @@ class Trainer(object):
     augmenter_class = find_class_by_name(FLAGS.data_augmenter, [data_augmentation])
 
     build_graph(reader=reader,
-                 model=model,
-                 optimizer_class=optimizer_class,
-                 augmenter_class=augmenter_class,
-                 transformer_class=transformer_class,
-                 clip_gradient_norm=FLAGS.clip_gradient_norm,
-                 train_data_pattern=FLAGS.train_data_pattern,
-                 label_loss_fn=label_loss_fn,
-                 base_learning_rate=FLAGS.base_learning_rate,
-                 learning_rate_decay=FLAGS.learning_rate_decay,
-                 learning_rate_decay_examples=FLAGS.learning_rate_decay_examples,
-                 regularization_penalty=FLAGS.regularization_penalty,
-                 num_readers=FLAGS.num_readers,
-                 batch_size=FLAGS.batch_size,
-                 num_epochs=FLAGS.num_epochs)
+                predictions_reader=predictions_reader,
+                train_data_pattern=FLAGS.train_data_pattern,
+                predictions_data_pattern=FLAGS.predictions_data_pattern,
+                model=model,
+                optimizer_class=optimizer_class,
+                augmenter_class=augmenter_class,
+                transformer_class=transformer_class,
+                clip_gradient_norm=FLAGS.clip_gradient_norm,
+                label_loss_fn=label_loss_fn,
+                base_learning_rate=FLAGS.base_learning_rate,
+                learning_rate_decay=FLAGS.learning_rate_decay,
+                learning_rate_decay_examples=FLAGS.learning_rate_decay_examples,
+                regularization_penalty=FLAGS.regularization_penalty,
+                num_readers=FLAGS.num_readers,
+                batch_size=FLAGS.batch_size,
+                num_epochs=FLAGS.num_epochs)
 
     logging.info("%s: Built graph.", task_as_string(self.task))
 
