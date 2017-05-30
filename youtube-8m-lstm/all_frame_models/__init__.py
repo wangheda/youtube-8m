@@ -11,6 +11,7 @@ from lstm_advanced_model import *
 from lstm_attention_lstm_model import *
 from lstm_attention_model import *
 from lstm_attention_max_pooling_model import *
+from distillchain_lstm_attention_max_pooling_model import *
 from lstm_positional_attention_max_pooling_model import *
 from lstm_divided_model import *
 from lstm_memory_model import *
