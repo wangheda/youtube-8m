@@ -1,0 +1,26 @@
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --train_dir="../model/distillchain_multilstm_dcc" \
+  --train_data_pattern="/Youtube-8M/distillation/frame/train/*.tfrecord" \
+  --frame_features=True \
+  --feature_names="rgb,audio" \
+  --feature_sizes="1024,128" \
+  --distillation_features=True \
+  --distillation_as_input=True \
+  --model=DistillchainLstmMemoryDeepCombineChainModel \
+	--lstm_layers=1 \
+	--lstm_cells=1024 \
+	--moe_num_mixtures=4 \
+	--distillation_relu_cells=256 \
+	--deep_chain_relu_cells=256 \
+	--deep_chain_layers=2 \
+  --rnn_swap_memory=True \
+  --multitask=True \
+  --label_loss=MultiTaskCrossEntropyLoss \
+  --support_type="label,label" \
+  --support_loss_percent=0.1 \
+  --num_readers=4 \
+  --batch_size=128 \
+  --num_epochs=3 \
+  --keep_checkpoint_every_n_hours=1.0 \
+  --base_learning_rate=0.001
+

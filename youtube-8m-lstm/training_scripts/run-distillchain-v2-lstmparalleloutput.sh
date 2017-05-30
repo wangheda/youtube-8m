@@ -1,0 +1,19 @@
+CUDA_VISIBLE_DEVICES=1 python train-with-predictions.py \
+	--train_dir="../model/distillchain_v2_lstmparalleloutput" \
+	--train_data_pattern="/Youtube-8M/data/frame/train/*.tfrecord" \
+  --predictions_data_pattern="/Youtube-8M/distillation_v2/predictions/*.tfrecord" \
+	--frame_features=True \
+	--feature_names="rgb,audio" \
+	--feature_sizes="1024,128" \
+	--distillation_features=False \
+	--distillation_as_input=True \
+	--model=DistillchainLstmParallelFinaloutputModel \
+	--rnn_swap_memory=True \
+	--lstm_cells="1024,128" \
+	--moe_num_mixtures=4 \
+	--num_readers=4 \
+	--batch_size=128 \
+	--num_epochs=2 \
+  --keep_checkpoint_every_n_hours=2.0 \
+	--base_learning_rate=0.001
+

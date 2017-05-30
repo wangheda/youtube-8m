@@ -172,16 +172,18 @@ def build_graph(reader,
           labels=labels_batch,
           dropout=FLAGS.dropout,
           keep_prob=keep_prob_tensor,
+          noise_level=noise_level_tensor,
           distillation_predictions=distillation_predictions,
-          noise_level=noise_level_tensor)
+          is_training=False)
     else:
       result = model.create_model(
           model_input,
           num_frames=num_frames,
           vocab_size=reader.num_classes,
           labels=labels_batch,
+          noise_level=noise_level_tensor,
           distillation_predictions=distillation_predictions,
-          noise_level=noise_level_tensor)
+          is_training=False)
 
     print "result", result
     predictions = result["predictions"]
