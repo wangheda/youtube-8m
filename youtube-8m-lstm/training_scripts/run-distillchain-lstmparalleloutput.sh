@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=1 python train.py \
+CUDA_VISIBLE_DEVICES=0 python train.py \
 	--train_dir="../model/distillchain_lstmparalleloutput" \
 	--train_data_pattern="/Youtube-8M/distillation/frame/train/*.tfrecord" \
 	--frame_features=True \
