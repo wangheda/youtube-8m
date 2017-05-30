@@ -13,8 +13,10 @@ if [ $task == "train" ]; then
   sub_model_path="${model_path}/${sub_model_name}"
   if [ ! -d $sub_model_path ]; then 
     mkdir -p $sub_model_path
+
+    echo predictions = "$predictions_data_pattern"
     CUDA_VISIBLE_DEVICES=0 python train-with-predictions.py \
-      --train_dir="$sub_model_dir" \
+      --train_dir="$sub_model_path" \
       --train_data_pattern="/Youtube-8M/data/video/train/*.tfrecord" \
       --predictions_data_pattern="$predictions_data_pattern" \
       --distillation_features=False \
@@ -42,6 +44,7 @@ if [ $task == "train" ]; then
   # inference model 1
   infer_data_path="/Youtube-8M/model_predictions/train/${model_name}/${sub_model_name}"
   if [ ! -d $infer_data_path ]; then
+    echo predictions = "$predictions_data_pattern"
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble-with-predictions.py \
       --output_dir="$infer_data_path" \
       --train_dir="$sub_model_path" \
@@ -68,6 +71,7 @@ if [ $task == "train" ]; then
   sub_model_path="${model_path}/${sub_model_name}"
   if [ ! -d $sub_model_path ]; then 
     mkdir -p $sub_model_path
+    echo predictions = "$predictions_data_pattern"
     CUDA_VISIBLE_DEVICES=0 python train-with-predictions.py \
       --predictions_data_pattern="$predictions_data_pattern" \
       --distillation_features=True \
@@ -117,10 +121,11 @@ if [ $task == "train" ]; then
   predictions_data_pattern="${predictions_data_pattern},${infer_data_path}/*.tfrecord"
 
   # train model 2: LSTM
-  sub_model_name="distillchain_v2_lstmmemory"
+  sub_model_name="distillchain_v2_lstmparalleloutput"
   sub_model_path="${model_path}/${sub_model_name}"
   if [ ! -d $sub_model_path ]; then 
     mkdir -p $sub_model_path
+    echo predictions = "$predictions_data_pattern"
     CUDA_VISIBLE_DEVICES=0 python train-with-predictions.py \
       --predictions_data_pattern="$predictions_data_pattern" \
       --distillation_features=True \
@@ -136,6 +141,7 @@ if [ $task == "train" ]; then
 	    --moe_num_mixtures=8 \
       --lstm_cells="1024,128" \
       --batch_size=128 \
+      --base_learning_rate=0.0008 \
       --num_epochs=1 \
       --keep_checkpoint_every_n_hours=20 \
   fi
@@ -153,7 +159,8 @@ elif [ $task == "test-lstm" ]; then
           predictions_data_pattern="${predictions_data_pattern},/Youtube-8M/model_predictions/${part}/${model_name}/${prev_model}/*.tfrecord"
         done
 
-        CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble-with-predictions.py \
+        echo predictions = "$predictions_data_pattern"
+        CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble-with-predictions.py \
           --output_dir="$infer_data_path" \
           --train_dir="$sub_model_path" \
           --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
@@ -186,7 +193,8 @@ elif [ $task == "test-cnn" ]; then
           predictions_data_pattern="${predictions_data_pattern},/Youtube-8M/model_predictions/${part}/${model_name}/${prev_model}/*.tfrecord"
         done
 
-        CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble-with-predictions.py \
+        echo predictions = "$predictions_data_pattern"
+        CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble-with-predictions.py \
           --output_dir="$infer_data_path" \
           --train_dir="$sub_model_path" \
           --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
@@ -216,7 +224,8 @@ elif [ $task == "test-video" ]; then
       if [ ! -d $infer_data_path ]; then
         predictions_data_pattern="/Youtube-8M/model_predictions/${part}/distillation/ensemble_v2_matrix_model/*.tfrecord"
 
-        CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble-with-predictions.py \
+        echo predictions = "$predictions_data_pattern"
+        CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble-with-predictions.py \
           --output_dir="$infer_data_path" \
           --train_dir="$sub_model_path" \
           --input_data_pattern="/Youtube-8M/data/video/${part}/*.tfrecord" \

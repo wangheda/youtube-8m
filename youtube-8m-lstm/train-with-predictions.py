@@ -297,7 +297,7 @@ def build_graph(reader,
   optimizer = optimizer_class(learning_rate)
 
   all_distill_labels = []
-  for dreader, dpattern in zip(predictions_readers, predictions_patterns):
+  for dreader, dpattern in zip(predictions_readers, predictions_data_patterns):
     distill_video_id, distill_labels_batch, unused_labels_batch, unused_num_frames = (
         get_input_data_tensors(
             dreader,
@@ -699,9 +699,9 @@ class Trainer(object):
 
     assert FLAGS.predictions_data_pattern is not None, "predictions data must be provided"
 
-    prediction_patterns = FLAGS.predictions_data_pattern.strip().split(",")
-    prediction_readers = []
-    for pattern in prediction_patterns:
+    predictions_patterns = FLAGS.predictions_data_pattern.strip().split(",")
+    predictions_readers = []
+    for pattern in predictions_patterns:
       predictions_readers.append(readers.YT8MAggregatedFeatureReader(
             feature_names=["predictions"], feature_sizes=[4716]))
 

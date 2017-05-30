@@ -154,7 +154,7 @@ def build_graph(reader,
               batch_size=batch_size))
       all_distill_labels.append(distill_labels_batch)
     all_distill_labels = tf.stack(all_distill_labels, axis=2)
-    distill_weight_var = tf.get_variable("distill_weight", [len(predictions_readers)])
+    distill_weight_var = tf.get_variable("distill_weight", [len(distill_readers)])
     distill_weight = tf.nn.softmax(distill_weight_var)
     final_distill_labels = tf.einsum("ijk,k->ij", all_distill_labels, distill_weight)
 
@@ -167,7 +167,7 @@ def build_graph(reader,
     else:
       noise_level_tensor = None
 
-    if distill_reader is not None:
+    if distill_readers is not None:
       distillation_predictions = final_distill_labels
     else:
       distillation_predictions = None
@@ -339,16 +339,16 @@ def main(unused_argv):
       "Unable to continue with inference.")
 
   if FLAGS.distill_data_pattern is not None:
-    prediction_patterns = FLAGS.distill_data_pattern.strip().split(",")
-    prediction_readers = []
-    for pattern in prediction_patterns:
-      prediction_readers.append(
+    predictions_patterns = FLAGS.distill_data_pattern.strip().split(",")
+    predictions_readers = []
+    for pattern in predictions_patterns:
+      predictions_readers.append(
           readers.YT8MAggregatedFeatureReader(
               feature_names=["predictions"],
               feature_sizes=[4716]))
   else:
-    prediction_readers = None
-    prediction_patterns = None
+    predictions_patterns = None
+    predictions_readers = None
 
   model = find_class_by_name(FLAGS.model,
                              [frame_level_models, video_level_models])()
@@ -358,8 +358,8 @@ def main(unused_argv):
   build_graph(reader=reader,
               input_data_pattern=FLAGS.input_data_pattern,
               model=model,
-              distill_readers=prediction_readers,
-              distill_data_patterns=prediction_patterns,
+              distill_readers=predictions_readers,
+              distill_data_patterns=predictions_patterns,
               batch_size=FLAGS.batch_size,
               transformer_class=transformer_fn)
 
