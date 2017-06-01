@@ -1,7 +1,7 @@
 start=$1
 
 GPU_ID=0
-EVERY=2000
+EVERY=500
 MODEL=DistillchainLstmMemoryDeepCombineChainModel
 MODEL_DIR="../model/distillchain_v2_multilstm_dcc"
 
