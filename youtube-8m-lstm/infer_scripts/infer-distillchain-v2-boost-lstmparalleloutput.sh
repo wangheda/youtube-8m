@@ -2,9 +2,9 @@
 for part in ensemble_train ensemble_validate test; do 
   output_dir="/Youtube-8M/model_predictions/${part}/distillchain_v2_boost_lstmparalleloutput"
   if [ ! -d $output_dir ]; then
-    CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
+    CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble.py \
         --output_dir="$output_dir" \
-        --model_checkpoint_path="../model/distillchain_v2_boost_lstmparalleloutput/model.ckpt-" \
+        --model_checkpoint_path="../model/distillchain_v2_boost_lstmparalleloutput/model.ckpt-86757" \
         --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
         --distill_data_pattern="/Youtube-8M/model_predictions/${part}/distillation/ensemble_v2_matrix_model/*.tfrecord" \
         --frame_features=True \
