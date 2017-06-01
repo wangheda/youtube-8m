@@ -2,7 +2,7 @@
 for part in ensemble_train ensemble_validate test; do 
   CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble.py \
     --output_dir="/Youtube-8M/model_predictions/${part}/distillchain_v2_multilstm_dcc" \
-    --model_checkpoint_path="../model/distillchain_v2_multilstm_dcc/model.ckpt-" \
+    --model_checkpoint_path="../model/distillchain_v2_multilstm_dcc/model.ckpt-74272" \
     --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
     --distill_data_pattern="/Youtube-8M/model_predictions/${part}/distillation/ensemble_v2_matrix_model/*.tfrecord" \
     --frame_features=True \
