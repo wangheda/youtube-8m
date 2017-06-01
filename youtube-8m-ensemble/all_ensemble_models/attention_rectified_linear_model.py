@@ -6,7 +6,7 @@ from tensorflow import flags
 import tensorflow.contrib.slim as slim
 FLAGS = flags.FLAGS
 
-class AttentionMatrixModel(models.BaseModel):
+class AttentionRectifiedLinearModel(models.BaseModel):
 
   def create_model(self,
                    model_input,
@@ -20,7 +20,6 @@ class AttentionMatrixModel(models.BaseModel):
     num_methods = model_input.get_shape().as_list()[-1]
     num_features = model_input.get_shape().as_list()[-2]
     num_mixtures = FLAGS.moe_num_mixtures
-    attention_matrix_rank = FLAGS.attention_matrix_rank
 
     # gating coefficients
     original_input = tf.nn.l2_normalize(original_input, dim=1)
@@ -34,19 +33,16 @@ class AttentionMatrixModel(models.BaseModel):
         scope="gates"+sub_scope)
 
     # matrix
-    weight_x = tf.get_variable("ensemble_weightx", 
-        shape=[num_mixtures, num_features, attention_matrix_rank],
+    weight_var = tf.get_variable("ensemble_weight",
+        shape=[num_mixtures, num_methods],
         regularizer=slim.l2_regularizer(l2_penalty))
-    weight_y = tf.get_variable("ensemble_weighty", 
-        shape=[num_mixtures, attention_matrix_rank, num_methods],
-        regularizer=slim.l2_regularizer(l2_penalty))
-    ## moe_num_mixtures x num_features x num_methods
-    weight_xy = tf.einsum("ijl,ilk->ijk", weight_x, weight_y)
 
     # weight
-    gated_weight_xy = tf.einsum("ij,jkl->ikl", gate_activations, weight_xy)
-    weight = tf.nn.softmax(gated_weight_xy)
+    gated_weight = tf.einsum("ij,jk->ik", gate_activations, weight_var)
+    rl_gated_weight = tf.nn.relu(gated_weight) + 1e-9
+    sum_gated_weight = tf.reduce_sum(rl_gated_weight, axis=1, keep_dims=True)
+    weight = rel_gated_weight / sum_gated_weight
     
     # weighted output
-    output = tf.reduce_sum(weight * model_input, axis=2)
+    output = tf.einsum("ik,ijk->ij", weight, model_input)
     return {"predictions": output}
