@@ -244,9 +244,9 @@ def get_video_weights(video_id_batch):
   return video_weight_batch
 
 def build_graph(reader,
-                predictions_reader,
+                predictions_readers,
                 train_data_pattern,
-                predictions_data_pattern,
+                predictions_data_patterns,
                 model,
                 label_loss_fn=losses.CrossEntropyLoss(),
                 batch_size=1000,
@@ -296,12 +296,19 @@ def build_graph(reader,
 
   optimizer = optimizer_class(learning_rate)
 
-  distill_video_id, distill_labels_batch, unused_labels_batch, unused_num_frames = (
-      get_input_data_tensors(
-          predictions_reader,
-          predictions_data_pattern,
-          batch_size=batch_size,
-          num_epochs=num_epochs))
+  all_distill_labels = []
+  for dreader, dpattern in zip(predictions_readers, predictions_data_patterns):
+    distill_video_id, distill_labels_batch, unused_labels_batch, unused_num_frames = (
+        get_input_data_tensors(
+            dreader,
+            dpattern,
+            batch_size=batch_size,
+            num_epochs=num_epochs))
+    all_distill_labels.append(distill_labels_batch)
+  all_distill_labels = tf.stack(all_distill_labels, axis=2)
+  distill_weight_var = tf.get_variable("distill_weight", [len(predictions_readers)])
+  distill_weight = tf.nn.softmax(distill_weight_var)
+  final_distill_labels = tf.einsum("ijk,k->ij", all_distill_labels, distill_weight)
 
   if FLAGS.distillation_features:
     video_id, model_input_raw, labels_batch, num_frames, distill_labels_batch = (
@@ -347,7 +354,7 @@ def build_graph(reader,
       noise_level_tensor = None
 
     if FLAGS.distillation_as_input:
-      distillation_predictions = distill_labels_batch
+      distillation_predictions = final_distill_labels
     else:
       distillation_predictions = None
 
@@ -692,8 +699,11 @@ class Trainer(object):
 
     assert FLAGS.predictions_data_pattern is not None, "predictions data must be provided"
 
-    predictions_reader = readers.YT8MAggregatedFeatureReader(
-            feature_names=["predictions"], feature_sizes=[4716])
+    predictions_patterns = FLAGS.predictions_data_pattern.strip().split(",")
+    predictions_readers = []
+    for pattern in predictions_patterns:
+      predictions_readers.append(readers.YT8MAggregatedFeatureReader(
+            feature_names=["predictions"], feature_sizes=[4716]))
 
     # Find the model.
     model = find_class_by_name(FLAGS.model,
@@ -704,9 +714,9 @@ class Trainer(object):
     augmenter_class = find_class_by_name(FLAGS.data_augmenter, [data_augmentation])
 
     build_graph(reader=reader,
-                predictions_reader=predictions_reader,
+                predictions_readers=predictions_readers,
                 train_data_pattern=FLAGS.train_data_pattern,
-                predictions_data_pattern=FLAGS.predictions_data_pattern,
+                predictions_data_patterns=predictions_patterns,
                 model=model,
                 optimizer_class=optimizer_class,
                 augmenter_class=augmenter_class,

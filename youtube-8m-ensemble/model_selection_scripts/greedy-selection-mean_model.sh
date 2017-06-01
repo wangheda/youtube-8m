@@ -13,10 +13,12 @@ if [ -f $all_models_conf ]; then
   top_models_conf="${all_models_conf}"
   len_k_models_conf="${all_models_conf}"
 
-  for step in {1..30}; do 
+  for step in {14..30}; do 
 
       if [ $step -gt 1 ]; then
+          top_models_conf="${model_path}/top_$((${step}-1))_models.conf"
           len_k_models_conf="${model_path}/len_${step}_models.conf"
+          echo $top_models_conf $len_k_models_conf
           python ${DIR}/get_extend_candidates.py --top_k_file="$top_models_conf" --all_models_conf="${all_models_conf}" > $len_k_models_conf
       fi
 

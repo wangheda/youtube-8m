@@ -240,7 +240,7 @@ def inference(reader, model_checkpoint_path, data_pattern, out_file_location, ba
     sess.close()
 
 def write_to_record(id_batch, label_batch, input_batch, filenum, num_examples_processed):
-    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%03d.tfrecord' % filenum)
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%04d.tfrecord' % filenum)
     for i in range(num_examples_processed):
         video_id = id_batch[i]
         label = np.nonzero(label_batch[i,:])[0]
