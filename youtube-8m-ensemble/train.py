@@ -247,7 +247,7 @@ def build_graph(all_readers,
   model_input = tf.concat(model_input_raw_tensors, axis=2)
   labels_batch = labels_batch_tensor
   tf.summary.histogram("model/input", model_input)
-  tf.summary.scalar("id_match", tf.reduce_mean(id_match))
+  tf.summary.scalar("model/id_match", tf.reduce_mean(id_match))
 
   with tf.name_scope("model"):
     if FLAGS.noise_level > 0:
