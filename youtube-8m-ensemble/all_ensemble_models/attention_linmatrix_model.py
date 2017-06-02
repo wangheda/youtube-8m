@@ -6,7 +6,7 @@ from tensorflow import flags
 import tensorflow.contrib.slim as slim
 FLAGS = flags.FLAGS
 
-class AttentionMatrixModel(models.BaseModel):
+class AttentionLinmatrixModel(models.BaseModel):
 
   def create_model(self,
                    model_input,
@@ -34,6 +34,10 @@ class AttentionMatrixModel(models.BaseModel):
         scope="gates"+sub_scope)
 
     # matrix
+    b = tf.get_variable("ensemble_bias", shape=[num_mixtures,1,1])
+    weight_var = tf.get_variable("ensemble_weight",
+        shape=[num_mixtures, 1, num_methods],
+        regularizer=slim.l2_regularizer(l2_penalty))
     weight_x = tf.get_variable("ensemble_weightx", 
         shape=[num_mixtures, num_features, attention_matrix_rank],
         regularizer=slim.l2_regularizer(l2_penalty))
@@ -41,7 +45,7 @@ class AttentionMatrixModel(models.BaseModel):
         shape=[num_mixtures, attention_matrix_rank, num_methods],
         regularizer=slim.l2_regularizer(l2_penalty))
     ## moe_num_mixtures x num_features x num_methods
-    weight_xy = tf.einsum("ijl,ilk->ijk", weight_x, weight_y)
+    weight_xy = tf.einsum("ijl,ilk->ijk", weight_x, weight_y) + weight_var + b
 
     # weight
     gated_weight_xy = tf.einsum("ij,jkl->ikl", gate_activations, weight_xy)
