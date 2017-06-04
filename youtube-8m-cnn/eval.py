@@ -202,7 +202,7 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
   """
 
   global_step_val = -1
-  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
   with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     if FLAGS.model_checkpoint_path:
       checkpoint = FLAGS.model_checkpoint_path

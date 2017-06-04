@@ -182,6 +182,7 @@ def build_graph(reader1,
                                 distill_labels=labels_distill,
                                 is_training=False)
     predictions = result["predictions"]
+    #predictions = 0.0*predictions + 1.0*labels_distill
     tf.summary.histogram("model_activations", predictions)
     if "loss" in result.keys():
       label_loss = result["loss"]
@@ -220,7 +221,7 @@ def evaluation_loop(video_id_batch, unused_id_batch, prediction_batch, label_bat
   """
 
   global_step_val = -1
-  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
   with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     if FLAGS.model_checkpoint_path:
       checkpoint = FLAGS.model_checkpoint_path
@@ -278,6 +279,24 @@ def evaluation_loop(video_id_batch, unused_id_batch, prediction_batch, label_bat
             summary_scope="Eval")
         logging.info("examples_processed: %d | %s", examples_processed,
                      iterinfo)
+        """
+        if examples_processed > 22000:
+          logging.info(
+            "Done with batched inference. Now calculating global performance "
+            "metrics.")
+          # calculate the metrics for the entire epoch
+          epoch_info_dict = evl_metrics.get()
+          epoch_info_dict["epoch_id"] = global_step_val
+
+          summary_writer.add_summary(summary_val, global_step_val)
+          epochinfo = utils.AddEpochSummary(
+              summary_writer,
+              global_step_val,
+              epoch_info_dict,
+              summary_scope="Eval")
+          logging.info(epochinfo)
+          evl_metrics.clear()
+          break"""
 
     except tf.errors.OutOfRangeError as e:
       logging.info(

@@ -96,19 +96,8 @@ class CrossEntropyLoss(BaseLoss):
         cross_entropy_loss = cross_entropy_loss_1 + cross_entropy_loss_2 - cross_entropy_loss_3
       elif FLAGS.loss_function=="loss_weight":
         print("loss_weight")
-        seq = np.loadtxt(FLAGS.class_file)
-        vocab_size = seq.shape[0]
-        labels_size = float_labels.get_shape().as_list()[1]
-        if labels_size>vocab_size:
-          seq = np.tile(seq,[labels_size//vocab_size,1])
-        tf_seq = tf.constant(seq,dtype=tf.float32)
-        tf_seq_transpose = tf.transpose(tf_seq)
-        class_labels = tf.matmul(float_labels,tf_seq)
-        class_labels = tf.clip_by_value(class_labels,0.0,1.0)
-        class_labels = tf.matmul(class_labels,tf_seq_transpose)
-        modify_labels = 1.0 - tf.clip_by_value(class_labels,0.0,0.5)
-        cross_entropy_loss = float_labels * tf.log(predictions + epsilon) + (
-            1 - float_labels) * tf.log(1 - predictions + epsilon)*modify_labels
+        cross_entropy_loss = float_labels * tf.log(predictions + epsilon) * 10 + (
+            1 - float_labels) * tf.log(1 - predictions + epsilon)
 
       elif FLAGS.loss_function=="loss_margin":
         print("loss_margin")

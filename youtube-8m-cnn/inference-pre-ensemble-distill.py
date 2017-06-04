@@ -198,6 +198,8 @@ def build_graph(reader1,
 
 def inference(video_id_batch, prediction_batch, label_batch, saver, out_file_location):
     global_step_val = -1
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+    #with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     with tf.Session() as sess:
         if FLAGS.model_checkpoint_path:
             checkpoint = FLAGS.model_checkpoint_path
