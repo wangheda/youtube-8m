@@ -3458,12 +3458,14 @@ class LstmDivideModel(models.BaseModel):
         """
         lstm_size = FLAGS.lstm_cells
         number_of_layers = FLAGS.lstm_layers
-        num_extend = FLAGS.moe_num_extend
+        num_extend = FLAGS.moe_num_extend - 1
         shape = model_input.get_shape().as_list()
+        full_num_frames = num_frames
         num_frames = tf.maximum(num_frames//num_extend,1)
-        length = shape[2]//num_extend
+        length = shape[1]//num_extend
 
         divide_inputs = []
+        divide_inputs.append(model_input)
         for i in range(num_extend):
             begin_frames = tf.reshape(num_frames*i,[-1,1])
             frames_index = tf.reshape(tf.range(length),[1,length])
@@ -3473,9 +3475,10 @@ class LstmDivideModel(models.BaseModel):
                 tf.expand_dims(tf.range(batch_size), 1), [1, length])
             index = tf.stack([batch_index, tf.cast(frames_index,dtype=tf.int32)], 2)
             divide_input = tf.gather_nd(model_input, index)
+            divide_input = tf.pad(divide_input, paddings=[[0,0],[0,shape[1]-length],[0,0]])
             divide_inputs.append(divide_input)
 
-        divide_inputs = tf.reshape(tf.stack(divide_inputs,axis=1),[-1,length,shape[2]])
+        divide_inputs = tf.reshape(tf.stack(divide_inputs,axis=1),[-1,shape[1],shape[2]])
 
         ## Batch normalize the input
         stacked_lstm = tf.contrib.rnn.MultiRNNCell(
@@ -3485,7 +3488,9 @@ class LstmDivideModel(models.BaseModel):
                 for _ in range(number_of_layers)
                 ],
             state_is_tuple=True)
-        num_frames = tf.reshape(tf.tile(tf.reshape(num_frames,[-1,1]),[1,FLAGS.moe_num_extend]),[-1])
+        num_frames = tf.tile(tf.reshape(num_frames,[-1,1]),[1,num_extend])
+        num_frames = tf.concat((tf.reshape(full_num_frames,[-1,1]),num_frames),axis=1)
+        num_frames = tf.reshape(num_frames,[-1])
         with tf.variable_scope("RNN"):
             outputs, state = tf.nn.dynamic_rnn(stacked_lstm, divide_inputs,
                                                    sequence_length=num_frames,
@@ -3502,7 +3507,7 @@ class LstmDivideModel(models.BaseModel):
 
         final_probilities = result["predictions"]
         result["prediction_frames"] = final_probilities
-        result["predictions"]  = tf.reduce_mean(tf.reshape(final_probilities,[-1,num_extend,vocab_size]),axis=1)
+        result["predictions"] = tf.reduce_mean(tf.reshape(final_probilities,[-1,num_extend+1,vocab_size]),axis=1)
         return result
 
 class LstmDivideRebuildModel(models.BaseModel):
@@ -3524,24 +3529,6 @@ class LstmDivideRebuildModel(models.BaseModel):
         """
         lstm_size = FLAGS.lstm_cells
         number_of_layers = FLAGS.lstm_layers
-        num_extend = FLAGS.moe_num_extend
-        shape = model_input.get_shape().as_list()
-        num_frames = tf.maximum(num_frames//num_extend,1)
-        length = shape[2]//num_extend
-
-        divide_inputs = []
-        for i in range(num_extend):
-            begin_frames = tf.reshape(num_frames*i,[-1,1])
-            frames_index = tf.reshape(tf.range(length),[1,length])
-            frames_index = begin_frames+frames_index
-            batch_size = tf.shape(model_input)[0]
-            batch_index = tf.tile(
-                tf.expand_dims(tf.range(batch_size), 1), [1, length])
-            index = tf.stack([batch_index, tf.cast(frames_index,dtype=tf.int32)], 2)
-            divide_input = tf.gather_nd(model_input, index)
-            divide_inputs.append(divide_input)
-
-        divide_inputs = tf.reshape(tf.stack(divide_inputs,axis=1),[-1,length,shape[2]])
 
         ## Batch normalize the input
         stacked_lstm = tf.contrib.rnn.MultiRNNCell(
@@ -3552,6 +3539,75 @@ class LstmDivideRebuildModel(models.BaseModel):
                 ],
             state_is_tuple=True)
         num_frames = tf.reshape(tf.tile(tf.reshape(num_frames,[-1,1]),[1,FLAGS.moe_num_extend]),[-1])
+        with tf.variable_scope("RNN"):
+            outputs, state = tf.nn.dynamic_rnn(stacked_lstm, model_input,
+                                               sequence_length=num_frames,
+                                               swap_memory=True,
+                                               dtype=tf.float32)
+        state_c = tf.concat(map(lambda x: x.c, state), axis=1)
+
+        aggregated_model = getattr(video_level_models,
+                                   FLAGS.video_level_classifier_model)
+        result = aggregated_model().create_model(
+            model_input=state_c,
+            vocab_size=vocab_size,
+            **unused_params)
+
+        return result
+
+
+class LstmDivideRebuild2Model(models.BaseModel):
+
+    def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+        """Creates a model which uses a stack of LSTMs to represent the video.
+
+        Args:
+          model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                       input features.
+          vocab_size: The number of classes in the dataset.
+          num_frames: A vector of length 'batch' which indicates the number of
+               frames for each video (before padding).
+
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          'batch_size' x 'num_classes'.
+        """
+        lstm_size = FLAGS.lstm_cells
+        number_of_layers = FLAGS.lstm_layers
+        num_extend = FLAGS.moe_num_extend - 1
+        shape = model_input.get_shape().as_list()
+        full_num_frames = num_frames
+        num_frames = tf.maximum(num_frames//num_extend,1)
+        length = shape[1]//num_extend
+
+        divide_inputs = []
+        divide_inputs.append(model_input)
+        for i in range(num_extend):
+            begin_frames = tf.reshape(num_frames*i,[-1,1])
+            frames_index = tf.reshape(tf.range(length),[1,length])
+            frames_index = begin_frames+frames_index
+            batch_size = tf.shape(model_input)[0]
+            batch_index = tf.tile(
+                tf.expand_dims(tf.range(batch_size), 1), [1, length])
+            index = tf.stack([batch_index, tf.cast(frames_index,dtype=tf.int32)], 2)
+            divide_input = tf.gather_nd(model_input, index)
+            divide_input = tf.pad(divide_input, paddings=[[0,0],[0,shape[1]-length],[0,0]])
+            divide_inputs.append(divide_input)
+
+        divide_inputs = tf.reshape(tf.stack(divide_inputs,axis=1),[-1,shape[1],shape[2]])
+
+        ## Batch normalize the input
+        stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0, state_is_tuple=True)
+                for _ in range(number_of_layers)
+                ],
+            state_is_tuple=True)
+        num_frames = tf.tile(tf.reshape(num_frames,[-1,1]),[1,num_extend])
+        num_frames = tf.concat((tf.reshape(full_num_frames,[-1,1]),num_frames),axis=1)
+        num_frames = tf.reshape(num_frames,[-1])
         with tf.variable_scope("RNN"):
             outputs, state = tf.nn.dynamic_rnn(stacked_lstm, divide_inputs,
                                                sequence_length=num_frames,
@@ -5758,6 +5814,7 @@ class CnnDCCDistillChainModel(models.BaseModel):
             next_input = tf.concat([normalized_cnn_output] + relu_layers, axis=1)
 
         main_predictions = self.sub_model(next_input, vocab_size, sub_scope=sub_scope+"-main")
+        main_predictions = distill_labels*0.8 + main_predictions*0.2
         support_predictions = tf.concat(support_predictions, axis=1)
         return {"predictions": main_predictions, "predictions_class": support_predictions}
 
