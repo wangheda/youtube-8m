@@ -123,7 +123,7 @@ def get_input_data_tensors(reader,
     logging.info("Number of training files: %s.", str(len(files)))
     files.sort()
     filename_queue = tf.train.string_input_producer(
-        files, num_epochs=1, shuffle=False)
+        files, num_epochs=num_epochs, shuffle=False)
     training_data = reader.prepare_reader(filename_queue)
 
     return tf.train.batch(
@@ -284,7 +284,7 @@ def build_graph(all_readers,
       if FLAGS.reweight:
         video_weights_batch = get_video_weights(video_id) * id_match
       else:
-        video_weights_batch = id_match
+        video_weights_batch = None #id_match
 
       if FLAGS.multitask:
         print "using multitask loss"
