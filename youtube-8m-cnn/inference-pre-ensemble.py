@@ -34,14 +34,10 @@ import numpy as np
 FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
-  flags.DEFINE_string("train_dir", "/tmp/yt8m_model/",
-                      "The directory to load the model files from.")
+  flags.DEFINE_string("model_checkpoint_path", "",
+                      "The file path to load the model from.")
   flags.DEFINE_string("output_dir", "",
                       "The file to save the predictions to.")
-  flags.DEFINE_string("set", "",
-                      "The second-level file to save the predictions to.")
-  flags.DEFINE_string("model", "",
-                      "The third-level file to save the predictions to.")
   flags.DEFINE_string(
       "input_data_pattern", "",
       "File glob defining the evaluation dataset in tensorflow.SequenceExample "
@@ -70,20 +66,6 @@ if __name__ == '__main__':
   flags.DEFINE_integer("top_k", 20,
                        "How many predictions to output per video.")
 
-def format_lines(video_ids, predictions, top_k):
-  batch_size = len(video_ids)
-  for video_index in range(batch_size):
-    top_indices = numpy.argpartition(predictions[video_index], -top_k)[-top_k:]
-    line = [(class_index, predictions[video_index][class_index])
-            for class_index in top_indices]
-  #  print("Type - Test :")
-  #  print(type(video_ids[video_index]))
-  #  print(video_ids[video_index].decode('utf-8'))
-    line = sorted(line, key=lambda p: -p[1])
-    yield video_ids[video_index].decode('utf-8') + "," + " ".join("%i %f" % pair
-                                                  for pair in line) + "\n"
-
-
 def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
   """Creates the section of the graph which reads the input data.
 
@@ -103,11 +85,6 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
   """
   with tf.name_scope("input"):
     files = gfile.Glob(data_pattern)
-    """
-    if FLAGS.set=="ensemble_validate":
-        files = [file for file in files if 'validatea' in file]
-    elif FLAGS.set=="ensemble_train":
-        files = [file for file in files if 'validatea' not in file]"""
     files.sort()
     if not files:
       raise IOError("Unable to find input files. data_pattern='" +
@@ -125,22 +102,22 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
                             enqueue_many=True))
     return video_id_batch, video_batch, unused_labels, num_frames_batch
 
-def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
+def inference(reader, model_checkpoint_path, data_pattern, out_file_location, batch_size, top_k):
   with tf.Session() as sess:
     video_id_batch, video_batch, video_label_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
-    latest_checkpoint = tf.train.latest_checkpoint(train_dir)
-    if latest_checkpoint is None:
-      raise Exception("unable to find a checkpoint at location: %s" % train_dir)
-    else:
-      meta_graph_location = latest_checkpoint + ".meta"
+
+    if model_checkpoint_path:
+      meta_graph_location = model_checkpoint_path + ".meta"
       logging.info("loading meta-graph: " + meta_graph_location)
+    else:
+      raise Exception("unable to find a checkpoint at location: %s" % model_checkpoint_path)
     saver = tf.train.import_meta_graph(meta_graph_location, clear_devices=True)
-    logging.info("restoring variables from " + latest_checkpoint)
-    saver.restore(sess, latest_checkpoint)
+    logging.info("restoring variables from " + model_checkpoint_path)
+    saver.restore(sess, model_checkpoint_path)
+
     input_tensor = tf.get_collection("input_batch_raw")[0]
     num_frames_tensor = tf.get_collection("num_frames")[0]
     predictions_tensor = tf.get_collection("predictions")[0]
-    bottleneck_tensor = tf.get_collection("bottleneck")[0]
 
     # Workaround for num_epochs issue.
     def set_up_init_ops(variables):
@@ -159,20 +136,18 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     num_examples_processed = 0
     start_time = time.time()
-    #out_file.write("VideoId,LabelConfidencePairs\n")
+
     video_id = []
     video_label = []
     video_inputs = []
     video_features = []
     filenum = 0
-    #directory = FLAGS.output_dir+'/'+FLAGS.set+'/'+FLAGS.model
+
     directory = FLAGS.output_dir
     if not os.path.exists(directory):
         os.makedirs(directory)
     else:
-        filelist = [ f for f in os.listdir(directory) ]
-        for f in filelist:
-            os.remove(directory+'/'+f)
+        raise IOError("Output path exists! path='" + directory + "'")
 
     try:
       while not coord.should_stop():
@@ -216,22 +191,17 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
 
     coord.join(threads)
     sess.close()
+
 def write_to_record(id_batch, label_batch, input_batch, predictions, filenum, num_examples_processed):
-    #writer = tf.python_io.TFRecordWriter(FLAGS.output_dir+'/'+FLAGS.set+'/'+FLAGS.model+'/'+'predictions-%03d.tfrecord' % filenum)
-    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir+'/'+'predictions-%03d.tfrecord' % filenum)
+    writer = tf.python_io.TFRecordWriter(FLAGS.output_dir + '/' + 'predictions-%03d.tfrecord' % filenum)
     for i in range(num_examples_processed):
         video_id = id_batch[i]
         label = np.nonzero(label_batch[i,:])[0]
-        features_1 = input_batch[i,:]
-        features_2 = predictions[i,:]
-        """
-        example = get_output_feature(video_id, label, [features_1,features_2],
-                                     ['rgb_audio','predictions'])"""
-        example = get_output_feature(video_id, label, [features_2],
-                                     ['predictions'])
+        example = get_output_feature(video_id, label, [predictions[i,:]], ['predictions'])
         serialized = example.SerializeToString()
         writer.write(serialized)
     writer.close()
+
 def get_output_feature(video_id, labels, features, feature_names):
     feature_maps = {'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[video_id])),
                     'labels': tf.train.Feature(int64_list=tf.train.Int64List(value=labels))}
@@ -263,8 +233,8 @@ def main(unused_argv):
     raise ValueError("'input_data_pattern' was not specified. "
       "Unable to continue with inference.")
 
-  inference(reader, FLAGS.train_dir, FLAGS.input_data_pattern,
-    FLAGS.output_dir, FLAGS.batch_size, FLAGS.top_k)
+  inference(reader, FLAGS.model_checkpoint_path, FLAGS.input_data_pattern,
+      FLAGS.output_dir, FLAGS.batch_size, FLAGS.top_k)
 
 
 if __name__ == "__main__":

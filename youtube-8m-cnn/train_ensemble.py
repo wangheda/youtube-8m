@@ -63,10 +63,8 @@ if __name__ == "__main__":
       "batches VS 4D batches.")
   flags.DEFINE_bool(
       "norm", True,
-      "If set, then --train_data_pattern must be frame-level features. "
-      "Otherwise, --train_data_pattern must be aggregated video-level "
-      "features. The model must also be set appropriately (i.e. to read 3D "
-      "batches VS 4D batches.")
+      "If set, then --input_data should be l2-normalized before follow-up processing. "
+      "Otherwise, --input_data remain unchanged")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Models are defined "
@@ -79,18 +77,19 @@ if __name__ == "__main__":
   # Distillation flags
   flags.DEFINE_string(
       "distill_data_pattern", "",
-      "File glob defining the evaluation dataset in tensorflow.SequenceExample "
-      "format. The SequenceExamples are expected to have an 'rgb' byte array "
+      "File glob defining the distill dataset in tensorflow.SequenceExample "
+      "format. The SequenceExamples are expected to have an 'predictions' byte array "
       "sequence feature as well as a 'labels' int64 context feature.")
-  flags.DEFINE_string("distill_names", "predictions", "Name of the feature "
-                                                      "to use for training.")
-  flags.DEFINE_string("distill_sizes", "4716", "Length of the feature vectors.")
+  flags.DEFINE_string("distill_names", "predictions", "Name of the distill feature "
+                                                      "to use for eval.")
+  flags.DEFINE_string("distill_sizes", "4716", "Length of the distill feature vectors.")
+
   flags.DEFINE_bool(
       "distillation_features", False,
       "If set, *DistillationFeatureReader will be used, the feature must contains"
       "prediction features (shape = [4716]).")
   flags.DEFINE_integer(
-      "distillation_type", 2, "Type of distillation, options are 1 and 2.")
+      "distillation_type", 2, "Type of distillation, options are 0, 1, 2 and 3.")
   flags.DEFINE_float("distillation_percent", 0.5,
       "If larger than 0, final_loss = distillation_loss * percent + normal_loss * (1.0 - percent).")
 
@@ -101,7 +100,8 @@ if __name__ == "__main__":
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch for training.")
   flags.DEFINE_integer("stride_size", 3,
-                       "How many examples to process per batch for training.")
+                       "How many frames to skip in frame level models, "
+                       "only used in LstmFramesModel and LstmSoftmaxModel.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Which loss function to use for training the model.")
   flags.DEFINE_float(

@@ -17,8 +17,7 @@ import time
 
 import eval_util
 import losses
-import frame_level_models
-import video_level_models
+import labels_autoencoder
 import readers
 import tensorflow as tf
 from tensorflow import app
@@ -53,10 +52,6 @@ if __name__ == "__main__":
       "Otherwise, --eval_data_pattern must be aggregated video-level "
       "features. The model must also be set appropriately (i.e. to read 3D "
       "batches VS 4D batches.")
-  flags.DEFINE_bool(
-      "norm", True,
-      "If set, then --input_data should be l2-normalized before follow-up processing. "
-      "Otherwise, --input_data remain unchanged")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Options include 'Logistic', "
@@ -149,16 +144,8 @@ def build_graph(reader,
       num_readers=num_readers)
   tf.summary.histogram("model_input_raw", model_input_raw)
 
-  feature_dim = len(model_input_raw.get_shape()) - 1
-
-  # Normalize input features.
-  if FLAGS.norm:
-      model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
-  else:
-      model_input = model_input_raw
-
   with tf.name_scope("model"):
-    result = model.create_model(model_input,
+    result = model.create_model(labels_batch,
                                 num_frames=num_frames,
                                 vocab_size=reader.num_classes,
                                 labels=labels_batch,
@@ -173,7 +160,6 @@ def build_graph(reader,
   tf.add_to_collection("global_step", global_step)
   tf.add_to_collection("loss", label_loss)
   tf.add_to_collection("predictions", predictions)
-  tf.add_to_collection("input_batch", model_input)
   tf.add_to_collection("video_id_batch", video_id_batch)
   tf.add_to_collection("num_frames", num_frames)
   tf.add_to_collection("labels", tf.cast(labels_batch, tf.float32))
@@ -201,8 +187,7 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
   """
 
   global_step_val = -1
-  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
-  with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
+  with tf.Session() as sess:
     if FLAGS.model_checkpoint_path:
       checkpoint = FLAGS.model_checkpoint_path
     else:
@@ -301,7 +286,7 @@ def evaluate():
                                                    feature_sizes=feature_sizes)
 
     model = find_class_by_name(FLAGS.model,
-        [frame_level_models, video_level_models])()
+        [labels_autoencoder])()
     label_loss_fn = find_class_by_name(FLAGS.label_loss, [losses])()
 
     if FLAGS.eval_data_pattern is "":

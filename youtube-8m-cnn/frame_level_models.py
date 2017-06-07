@@ -48,14 +48,14 @@ flags.DEFINE_string("video_level_classifier_model", "MoeModel",
                     "generalized pooling operation followed by a "
                     "classifier layer")
 flags.DEFINE_integer("lstm_cells", 1024, "Number of LSTM cells.")
-flags.DEFINE_integer("lstm_length", 10, "Number of LSTM cells.")
+flags.DEFINE_integer("lstm_length", 10, "Number of LSTM length, only used in LstmLayerModel.")
 flags.DEFINE_integer("lstm_layers", 2, "Number of LSTM layers.")
-flags.DEFINE_integer("lstm_interval", 3, "Number of LSTM layers.")
+flags.DEFINE_integer("lstm_interval", 3, "Number of LSTM residual intervals, only used in LstmResidualModel.")
 flags.DEFINE_bool("train", True,
-                    "The pooling method used in the DBoF cluster layer. "
-                    "Choices are 'average' and 'max'.")
+                    "Whether the process is training procedure."
+                    "used for batch normalization and LstmRandomModel and LstmNioseModel.")
 
-flags.DEFINE_integer("cnn_cells", 256, "Number of LSTM cells.")
+flags.DEFINE_integer("cnn_cells", 256, "Number of CNN cells.")
 
 class FrameLevelLogisticModel(models.BaseModel):
 

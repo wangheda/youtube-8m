@@ -29,34 +29,33 @@ flags.DEFINE_integer(
     "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
 flags.DEFINE_integer(
     "moe_num_extend", 8,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The number of attention outputs, used for MoeExtendModel.")
 flags.DEFINE_string("moe_method", "none",
                     "The pooling method used in the DBoF cluster layer. "
-                    "Choices are 'average' and 'max'.")
+                    "used for MoeMaxModel.")
 flags.DEFINE_integer(
     "class_size", 200,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The dimention of prediction projection, used for all chain models.")
 flags.DEFINE_integer(
     "encoder_size", 100,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The dimention of prediction encoder, used for all mix models.")
 flags.DEFINE_integer(
     "hidden_size_1", 100,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The size of the first hidden layer, used forAutoEncoderModel.")
 flags.DEFINE_integer(
     "hidden_channels", 3,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The number of hidden layers, only used in early experiment.")
 flags.DEFINE_integer(
     "moe_layers", 1,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The number of combine layers, used for combine related models.")
 flags.DEFINE_integer(
     "softmax_bound", 1000,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The number of labels to be a group, only used for MoeSoftmaxModel and MoeDistillSplitModel.")
 flags.DEFINE_bool(
     "moe_group", False,
-    "Whether to write the device on which every op will run into the "
-    "logs on startup.")
-flags.DEFINE_float("noise_std", 0.2, "Norm to clip gradients to.")
-flags.DEFINE_float("ensemble_w", 1.0, "Norm to clip gradients to.")
+    "Whether to split the 4716 labels into different groups, used in MoeMix4Model and MoeNoiseModel")
+flags.DEFINE_float("noise_std", 0.2, "the standard deviation of noise added to the input.")
+flags.DEFINE_float("ensemble_w", 1.0, "ensemble weight used in distill chain models.")
 
 
 class LogisticModel(models.BaseModel):
