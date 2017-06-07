@@ -52,3 +52,4 @@ from framehop_lstm_memory_model import *
 from lstm_look_back_model import *
 from lstm_auxloss_deep_combine_chain_model import *
 from multiscale_cnn_lstm_model import *
+from distillchain_multiscale_cnn_lstm_model import *

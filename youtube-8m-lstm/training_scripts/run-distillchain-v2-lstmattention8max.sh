@@ -1,6 +1,6 @@
 CUDA_VISIBLE_DEVICES=0 python train.py \
-	--train_dir="../model/distillchain_lstmattention8max" \
-	--train_data_pattern="/Youtube-8M/distillation/frame/train/*.tfrecord" \
+	--train_dir="../model/distillchain_v2_lstmattention8max" \
+	--train_data_pattern="/Youtube-8M/distillation_v2/frame/train/*.tfrecord" \
 	--frame_features=True \
 	--feature_names="rgb,audio" \
 	--feature_sizes="1024,128" \

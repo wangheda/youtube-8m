@@ -1,5 +1,7 @@
 model=$1
 conf=$2
+moe=$3
+att=$4
 
 DEFAULT_GPU_ID=0
 if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
@@ -24,8 +26,8 @@ CUDA_VISIBLE_DEVICES="$GPU_ID" python train.py \
       --input_data_pattern="$input_data_pattern" \
       --model=AttentionMatrixModel \
       --base_learning_rate=0.004 \
-      --moe_num_mixtures=4 \
-      --attention_matrix_rank=8 \
+      --moe_num_mixtures=${moe} \
+      --attention_matrix_rank=${att} \
       --keep_checkpoint_every_n_hours=0.1 \
       --batch_size=1024 \
       --num_epochs=4

@@ -130,11 +130,12 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=1):
 
 
 def build_graph(reader,
-                model,
                 input_data_pattern,
+                model,
+                distill_readers=None,
+                distill_data_patterns=None,
                 label_loss_fn=losses.CrossEntropyLoss(),
                 batch_size=1000,
-                distill_reader=None,
                 transformer_class=feature_transform.DefaultTransformer):
   
   video_id, model_input_raw, labels_batch, num_frames = (
@@ -143,11 +144,19 @@ def build_graph(reader,
           input_data_pattern,
           batch_size=batch_size))
 
-  if distill_reader is not None:
-    unused_video_id_batch, distill_input_raw, unused_labels_batch, unused_num_frames = get_input_data_tensors(  # pylint: disable=g-line-too-long
-        distill_reader,
-        FLAGS.distill_data_pattern,
-        batch_size=batch_size)
+  if distill_readers is not None:
+    all_distill_labels = []
+    for dreader, dpattern in zip(distill_readers, distill_data_patterns):
+      distill_video_id, distill_labels_batch, unused_labels_batch, unused_num_frames = (
+          get_input_data_tensors(
+              dreader,
+              dpattern,
+              batch_size=batch_size))
+      all_distill_labels.append(distill_labels_batch)
+    all_distill_labels = tf.stack(all_distill_labels, axis=2)
+    distill_weight_var = tf.get_variable("distill_weight", [len(distill_readers)])
+    distill_weight = tf.nn.softmax(distill_weight_var)
+    final_distill_labels = tf.einsum("ijk,k->ij", all_distill_labels, distill_weight)
 
   feature_transformer = transformer_class()
   model_input, num_frames = feature_transformer.transform(model_input_raw, num_frames=num_frames)
@@ -158,8 +167,8 @@ def build_graph(reader,
     else:
       noise_level_tensor = None
 
-    if distill_reader is not None:
-      distillation_predictions = distill_input_raw
+    if distill_readers is not None:
+      distillation_predictions = final_distill_labels
     else:
       distillation_predictions = None
 
@@ -330,21 +339,28 @@ def main(unused_argv):
       "Unable to continue with inference.")
 
   if FLAGS.distill_data_pattern is not None:
-    distill_reader = readers.YT8MAggregatedFeatureReader(feature_names=["predictions"],
-                                                         feature_sizes=[4716])
+    predictions_patterns = FLAGS.distill_data_pattern.strip().split(",")
+    predictions_readers = []
+    for pattern in predictions_patterns:
+      predictions_readers.append(
+          readers.YT8MAggregatedFeatureReader(
+              feature_names=["predictions"],
+              feature_sizes=[4716]))
   else:
-    distill_reader = None
+    predictions_patterns = None
+    predictions_readers = None
 
   model = find_class_by_name(FLAGS.model,
                              [frame_level_models, video_level_models])()
   transformer_fn = find_class_by_name(FLAGS.feature_transformer, 
                                       [feature_transform])
 
-  build_graph(reader,
-              model,
+  build_graph(reader=reader,
               input_data_pattern=FLAGS.input_data_pattern,
+              model=model,
+              distill_readers=predictions_readers,
+              distill_data_patterns=predictions_patterns,
               batch_size=FLAGS.batch_size,
-              distill_reader=distill_reader,
               transformer_class=transformer_fn)
 
   saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=10000000000)
