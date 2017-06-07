@@ -18,7 +18,7 @@ for d in $(cat $conf); do
 done
 echo "$validate_data_patterns"
 
-EVERY=100
+EVERY=200
 start=-1
 DIR="$(pwd)"
 MODEL_DIR="${DIR}/../model/${model}" \
