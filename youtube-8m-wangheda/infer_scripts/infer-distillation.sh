@@ -68,7 +68,7 @@ for part in ensemble_validate test ensemble_train; do
 done
 
 # The Lstm-Attention-Max-pooling model
-cd ${DIR}/../../youtube-8m-cnn/
+cd ${DIR}/../../youtube-8m-zhangteng/
 model_name="distillation/frame_level_lstm_extend8_model"
 checkpoint="181785"
 for part in ensemble_validate test ensemble_train; do 
