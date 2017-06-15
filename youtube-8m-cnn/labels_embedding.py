@@ -24,10 +24,10 @@ import tensorflow.contrib.slim as slim
 FLAGS = flags.FLAGS
 flags.DEFINE_integer(
     "hidden_size", 1024,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The size of hidden layers.")
 flags.DEFINE_integer(
     "top_k", 30,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The maximum number of positive labels in one sample.")
 
 class EmbeddingSigmoidModel(models.BaseModel):
     """Logistic model with L2 regularization."""

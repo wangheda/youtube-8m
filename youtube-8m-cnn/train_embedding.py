@@ -72,7 +72,8 @@ if __name__ == "__main__":
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch for training.")
   flags.DEFINE_integer("stride_size", 4,
-                       "How many examples to process per batch for training.")
+                       "How many frames to skip in frame level models, "
+                       "only used in LstmFramesModel and LstmSoftmaxModel.")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Which loss function to use for training the model.")
   flags.DEFINE_float(

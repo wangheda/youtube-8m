@@ -49,12 +49,12 @@ if __name__ == "__main__":
 
   flags.DEFINE_string(
       "distill_data_pattern", "",
-      "File glob defining the evaluation dataset in tensorflow.SequenceExample "
-      "format. The SequenceExamples are expected to have an 'rgb' byte array "
+      "File glob defining the distill dataset in tensorflow.SequenceExample "
+      "format. The SequenceExamples are expected to have an 'predictions' byte array "
       "sequence feature as well as a 'labels' int64 context feature.")
-  flags.DEFINE_string("distill_names", "predictions", "Name of the feature "
-                                                   "to use for training.")
-  flags.DEFINE_string("distill_sizes", "4716", "Length of the feature vectors.")
+  flags.DEFINE_string("distill_names", "predictions", "Name of the distill feature "
+                                                   "to use for eval.")
+  flags.DEFINE_string("distill_sizes", "4716", "Length of the distill feature vectors.")
 
   # Model flags.
   flags.DEFINE_bool(
@@ -65,10 +65,8 @@ if __name__ == "__main__":
       "batches VS 4D batches.")
   flags.DEFINE_bool(
       "norm", True,
-      "If set, then --train_data_pattern must be frame-level features. "
-      "Otherwise, --train_data_pattern must be aggregated video-level "
-      "features. The model must also be set appropriately (i.e. to read 3D "
-      "batches VS 4D batches.")
+      "If set, then --input_data should be l2-normalized before follow-up processing. "
+      "Otherwise, --input_data remain unchanged")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Options include 'Logistic', "
@@ -77,7 +75,8 @@ if __name__ == "__main__":
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch.")
   flags.DEFINE_integer("stride_size", 4,
-                       "How many examples to process per batch for training.")
+                       "How many frames to skip in frame level models, "
+                       "only used in LstmFramesModel and LstmSoftmaxModel")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Loss computed on validation data")
 
@@ -182,6 +181,7 @@ def build_graph(reader1,
                                 distill_labels=labels_distill,
                                 is_training=False)
     predictions = result["predictions"]
+    #predictions = 0.0*predictions + 1.0*labels_distill
     tf.summary.histogram("model_activations", predictions)
     if "loss" in result.keys():
       label_loss = result["loss"]
@@ -220,7 +220,7 @@ def evaluation_loop(video_id_batch, unused_id_batch, prediction_batch, label_bat
   """
 
   global_step_val = -1
-  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
   with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     if FLAGS.model_checkpoint_path:
       checkpoint = FLAGS.model_checkpoint_path
@@ -278,6 +278,24 @@ def evaluation_loop(video_id_batch, unused_id_batch, prediction_batch, label_bat
             summary_scope="Eval")
         logging.info("examples_processed: %d | %s", examples_processed,
                      iterinfo)
+        """
+        if examples_processed > 22000:
+          logging.info(
+            "Done with batched inference. Now calculating global performance "
+            "metrics.")
+          # calculate the metrics for the entire epoch
+          epoch_info_dict = evl_metrics.get()
+          epoch_info_dict["epoch_id"] = global_step_val
+
+          summary_writer.add_summary(summary_val, global_step_val)
+          epochinfo = utils.AddEpochSummary(
+              summary_writer,
+              global_step_val,
+              epoch_info_dict,
+              summary_scope="Eval")
+          logging.info(epochinfo)
+          evl_metrics.clear()
+          break"""
 
     except tf.errors.OutOfRangeError as e:
       logging.info(

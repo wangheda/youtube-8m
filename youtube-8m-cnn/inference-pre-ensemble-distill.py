@@ -48,12 +48,12 @@ if __name__ == '__main__':
 
     flags.DEFINE_string(
         "distill_data_pattern", "",
-        "File glob defining the evaluation dataset in tensorflow.SequenceExample "
-        "format. The SequenceExamples are expected to have an 'rgb' byte array "
-        "sequence feature as well as a 'labels' int64 context feature.")
-    flags.DEFINE_string("distill_names", "predictions", "Name of the feature "
-                                                        "to use for training.")
-    flags.DEFINE_string("distill_sizes", "4716", "Length of the feature vectors.")
+        "File glob defining the distill dataset in tensorflow.SequenceExample "
+        "format. The SequenceExamples are expected to have an 'predictions' byte array "
+        "sequence feature.")
+    flags.DEFINE_string("distill_names", "predictions", "Name of the distill feature "
+                                                        "to use for inference.")
+    flags.DEFINE_string("distill_sizes", "4716", "Length of the distill feature vectors.")
 
     # Model flags.
     flags.DEFINE_string("label_loss", "CrossEntropyLoss",
@@ -66,10 +66,8 @@ if __name__ == '__main__':
         "batches VS 4D batches.")
     flags.DEFINE_bool(
         "norm", True,
-        "If set, then --train_data_pattern must be frame-level features. "
-        "Otherwise, --train_data_pattern must be aggregated video-level "
-        "features. The model must also be set appropriately (i.e. to read 3D "
-        "batches VS 4D batches.")
+        "If set, then --input_data should be l2-normalized before follow-up processing. "
+        "Otherwise, --input_data remain unchanged")
     flags.DEFINE_string(
         "model", "LogisticModel",
         "Which architecture to use for the model. Options include 'Logistic', "
@@ -82,7 +80,7 @@ if __name__ == '__main__':
                                                      "to use for training.")
     flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
     flags.DEFINE_integer("file_size", 4096,
-                         "Number of frames per batch for DBoF.")
+                         "Number of samples to be written into one tfrecord file.")
 
     # Other flags.
     flags.DEFINE_integer("num_readers", 1,
@@ -198,6 +196,8 @@ def build_graph(reader1,
 
 def inference(video_id_batch, prediction_batch, label_batch, saver, out_file_location):
     global_step_val = -1
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+    #with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     with tf.Session() as sess:
         if FLAGS.model_checkpoint_path:
             checkpoint = FLAGS.model_checkpoint_path
