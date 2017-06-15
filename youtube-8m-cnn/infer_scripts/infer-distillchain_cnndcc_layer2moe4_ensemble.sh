@@ -1,5 +1,5 @@
 
-for part in ensemble_validate ensemble_train test; do 
+for part in ensemble_train ensemble_validate test; do 
 #for part in ensemble_validate; do 
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble-distill.py \
 	      --output_dir="/Youtube-8M/model_predictions/${part}/distillchain_cnndcc_layer2moe4" \
