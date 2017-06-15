@@ -1,0 +1,14 @@
+CUDA_VISIBLE_DEVICES=0 python train.py \
+	--train_dir="../model/audio_lstmmemory1024_layer1_moe8/" \
+	--frame_features=True \
+	--feature_names="audio" \
+	--feature_sizes="128" \
+	--train_data_pattern="/Youtube-8M/data/frame/train/train*" \
+	--model=LstmMemoryModel \
+	--lstm_cells=512 \
+	--lstm_layers=1 \
+	--moe_num_mixtures=8 \
+	--rnn_swap_memory=False \
+	--batch_size=128 \
+	--num_readers=4 \
+	--base_learning_rate=0.0008 
