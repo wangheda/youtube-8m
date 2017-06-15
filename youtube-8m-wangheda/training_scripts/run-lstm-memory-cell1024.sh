@@ -1,10 +1,8 @@
-CUDA_VISIBLE_DEVICES=1 python train.py \
-	--train_dir="../model/lstmmemory_moe8_feature/" \
+CUDA_VISIBLE_DEVICES=0 python train.py \
+	--train_dir="../model/lstmmemory_cell1024_layer2_moe8/" \
 	--frame_features=True \
 	--feature_names="rgb,audio" \
 	--feature_sizes="1024,128" \
-	--feature_transformer=EngineerTransformer \
-	--engineer_types="identical,avg,std,diff" \
 	--train_data_pattern="/Youtube-8M/data/frame/train/train*" \
 	--batch_size=128 \
 	--moe_num_mixtures=8 \
