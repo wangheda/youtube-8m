@@ -29,33 +29,33 @@ flags.DEFINE_integer(
     "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
 flags.DEFINE_integer(
     "moe_num_extend", 8,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The number of attention outputs, used for MoeExtendModel.")
 flags.DEFINE_string("moe_method", "none",
                     "The pooling method used in the DBoF cluster layer. "
-                    "Choices are 'average' and 'max'.")
+                    "used for MoeMaxModel.")
 flags.DEFINE_integer(
     "class_size", 200,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The dimention of prediction projection, used for all chain models.")
 flags.DEFINE_integer(
     "encoder_size", 100,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The dimention of prediction encoder, used for all mix models.")
 flags.DEFINE_integer(
     "hidden_size_1", 100,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The size of the first hidden layer, used forAutoEncoderModel.")
 flags.DEFINE_integer(
     "hidden_channels", 3,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The number of hidden layers, only used in early experiment.")
 flags.DEFINE_integer(
     "moe_layers", 1,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "The number of combine layers, used for combine related models.")
 flags.DEFINE_integer(
-    "softmax_bound", 3000,
-    "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+    "softmax_bound", 1000,
+    "The number of labels to be a group, only used for MoeSoftmaxModel and MoeDistillSplitModel.")
 flags.DEFINE_bool(
     "moe_group", False,
-    "Whether to write the device on which every op will run into the "
-    "logs on startup.")
-flags.DEFINE_float("noise_std", 0.2, "Norm to clip gradients to.")
+    "Whether to split the 4716 labels into different groups, used in MoeMix4Model and MoeNoiseModel")
+flags.DEFINE_float("noise_std", 0.2, "the standard deviation of noise added to the input.")
+flags.DEFINE_float("ensemble_w", 1.0, "ensemble weight used in distill chain models.")
 
 
 class LogisticModel(models.BaseModel):
@@ -230,6 +230,59 @@ class MoeDistillModel(models.BaseModel):
             final_probabilities = final_sub_probabilities
         return {"predictions": final_probabilities, "predictions_class": final_sub_probabilities}
 
+class MoeDistillEmbeddingModel(models.BaseModel):
+    """A softmax over a mixture of logistic models (with L2 regularization)."""
+
+    def create_model(self,
+                     model_input,
+                     vocab_size,
+                     distill_labels=None,
+                     num_mixtures=None,
+                     l2_penalty=1e-8,
+                     **unused_params):
+        """Creates a Mixture of (Logistic) Experts model.
+
+         The model consists of a per-class softmax distribution over a
+         configurable number of logistic classifiers. One of the classifiers in the
+         mixture is not trained, and always predicts 0.
+
+        Args:
+          model_input: 'batch_size' x 'num_features' matrix of input features.
+          vocab_size: The number of classes in the dataset.
+          num_mixtures: The number of mixtures (excluding a dummy 'expert' that
+            always predicts the non-existence of an entity).
+          l2_penalty: How much to penalize the squared magnitudes of parameter
+            values.
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          batch_size x num_classes.
+        """
+        """
+        embedding_mat = np.loadtxt("./resources/embedding_matrix.model.gz")
+        embedding_mat = tf.cast(embedding_mat,dtype=tf.float32)
+
+        bound = FLAGS.softmax_bound
+        vocab_size_1 = bound
+
+        probabilities_by_distill = distill_labels[:, :vocab_size_1]
+        embedding_mat = embedding_mat[:vocab_size_1, :]
+        labels_smooth = tf.matmul(probabilities_by_distill, embedding_mat)
+        probabilities_by_smooth_1 = (labels_smooth[:, :vocab_size_1] - probabilities_by_distill)/tf.reduce_sum(probabilities_by_distill,axis=1,keep_dims=True)
+        probabilities_by_smooth_2 = labels_smooth[:, vocab_size_1:]/tf.reduce_sum(probabilities_by_distill,axis=1,keep_dims=True)
+        labels_smooth = tf.concat((probabilities_by_smooth_1, probabilities_by_smooth_2), axis=1)"""
+
+
+        expert_gate = slim.fully_connected(
+            distill_labels,
+            1,
+            activation_fn=tf.nn.sigmoid,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="expert_gate")
+        #final_probabilities = tf.clip_by_value(distill_labels + labels_smooth, 0.0, 1.0)
+        final_probabilities = distill_labels
+        return {"predictions": final_probabilities}
+
 class MoeDistillChainModel(models.BaseModel):
     """A softmax over a mixture of logistic models (with L2 regularization)."""
 
@@ -299,6 +352,158 @@ class MoeDistillChainModel(models.BaseModel):
         final_probabilities = tf.reshape(probabilities_by_class_and_batch,
                                          [-1, vocab_size])
 
+        final_probabilities = final_probabilities*FLAGS.ensemble_w + distill_labels*(1.0-FLAGS.ensemble_w)
+
+        return {"predictions": final_probabilities}
+
+class MoeDistillChainNormModel(models.BaseModel):
+    """A softmax over a mixture of logistic models (with L2 regularization)."""
+
+    def create_model(self,
+                     model_input,
+                     vocab_size,
+                     distill_labels=None,
+                     num_mixtures=None,
+                     l2_penalty=1e-8,
+                     **unused_params):
+        """Creates a Mixture of (Logistic) Experts model.
+
+         The model consists of a per-class softmax distribution over a
+         configurable number of logistic classifiers. One of the classifiers in the
+         mixture is not trained, and always predicts 0.
+
+        Args:
+          model_input: 'batch_size' x 'num_features' matrix of input features.
+          vocab_size: The number of classes in the dataset.
+          num_mixtures: The number of mixtures (excluding a dummy 'expert' that
+            always predicts the non-existence of an entity).
+          l2_penalty: How much to penalize the squared magnitudes of parameter
+            values.
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          batch_size x num_classes.
+        """
+        num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+        class_size = 256
+        model_input = tf.nn.l2_normalize(model_input,dim=1)
+        if distill_labels is not None:
+            class_input = slim.fully_connected(
+                distill_labels,
+                class_size,
+                activation_fn=None,
+                weights_regularizer=slim.l2_regularizer(l2_penalty),
+                scope="class_inputs")
+            class_input = class_input/tf.reduce_sum(distill_labels,axis=1,keep_dims=True)
+            class_input = tf.nn.l2_normalize(class_input,dim=1)
+            model_input = tf.concat((model_input,class_input),axis=1)
+
+        gate_activations = slim.fully_connected(
+            model_input,
+            vocab_size * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates")
+        expert_activations = slim.fully_connected(
+            model_input,
+            vocab_size * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts")
+
+        gating_distribution = tf.nn.softmax(tf.reshape(
+            gate_activations,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution = tf.nn.sigmoid(tf.reshape(
+            expert_activations,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+        probabilities_by_class_and_batch = tf.reduce_sum(
+            gating_distribution[:, :num_mixtures] * expert_distribution, 1)
+        probabilities_by_class_and_batch = tf.reshape(probabilities_by_class_and_batch,
+                                                      [-1, vocab_size])
+
+        final_probabilities = tf.reshape(probabilities_by_class_and_batch,
+                                         [-1, vocab_size])
+
+        final_probabilities = final_probabilities*FLAGS.ensemble_w + distill_labels*(1.0-FLAGS.ensemble_w)
+
+        return {"predictions": final_probabilities}
+
+class MoeDistillChainNorm2Model(models.BaseModel):
+    """A softmax over a mixture of logistic models (with L2 regularization)."""
+
+    def create_model(self,
+                     model_input,
+                     vocab_size,
+                     distill_labels=None,
+                     num_mixtures=None,
+                     l2_penalty=1e-8,
+                     **unused_params):
+        """Creates a Mixture of (Logistic) Experts model.
+
+         The model consists of a per-class softmax distribution over a
+         configurable number of logistic classifiers. One of the classifiers in the
+         mixture is not trained, and always predicts 0.
+
+        Args:
+          model_input: 'batch_size' x 'num_features' matrix of input features.
+          vocab_size: The number of classes in the dataset.
+          num_mixtures: The number of mixtures (excluding a dummy 'expert' that
+            always predicts the non-existence of an entity).
+          l2_penalty: How much to penalize the squared magnitudes of parameter
+            values.
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          batch_size x num_classes.
+        """
+        num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+        class_size = 256
+        model_input = tf.nn.l2_normalize(model_input,dim=1)
+        if distill_labels is not None:
+            class_input = slim.fully_connected(
+                distill_labels,
+                class_size,
+                activation_fn=tf.nn.relu,
+                weights_regularizer=slim.l2_regularizer(l2_penalty),
+                scope="class_inputs")
+            class_input = class_input/tf.reduce_sum(distill_labels,axis=1,keep_dims=True)
+            class_input = tf.nn.l2_normalize(class_input,dim=1)
+            model_input = tf.concat((model_input,class_input),axis=1)
+
+        gate_activations = slim.fully_connected(
+            model_input,
+            vocab_size * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates")
+        expert_activations = slim.fully_connected(
+            model_input,
+            vocab_size * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts")
+
+        gating_distribution = tf.nn.softmax(tf.reshape(
+            gate_activations,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution = tf.nn.sigmoid(tf.reshape(
+            expert_activations,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+        probabilities_by_class_and_batch = tf.reduce_sum(
+            gating_distribution[:, :num_mixtures] * expert_distribution, 1)
+        probabilities_by_class_and_batch = tf.reshape(probabilities_by_class_and_batch,
+                                                      [-1, vocab_size])
+
+        final_probabilities = tf.reshape(probabilities_by_class_and_batch,
+                                         [-1, vocab_size])
+
+        final_probabilities = final_probabilities*FLAGS.ensemble_w + distill_labels*(1.0-FLAGS.ensemble_w)
+
         return {"predictions": final_probabilities}
 
 class MoeDistillSplitModel(models.BaseModel):
@@ -332,6 +537,17 @@ class MoeDistillSplitModel(models.BaseModel):
         num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
         bound = FLAGS.softmax_bound
         vocab_size_1 = bound
+        class_size = 256
+        probabilities_by_distill = distill_labels[:,vocab_size_1:]
+
+        class_input = slim.fully_connected(
+            probabilities_by_distill,
+            class_size,
+            activation_fn=tf.nn.relu,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="class_inputs")
+        #class_input = tf.nn.l2_normalize(class_input, dim=1)
+        model_input = tf.concat((model_input,class_input),axis=1)
 
         gate_activations = slim.fully_connected(
             model_input,
@@ -358,10 +574,305 @@ class MoeDistillSplitModel(models.BaseModel):
             gating_distribution[:, :num_mixtures] * expert_distribution, 1)
         probabilities_by_class_and_batch = tf.reshape(probabilities_by_class_and_batch,
                                                       [-1, vocab_size_1])
-        probabilities_by_distill = distill_labels[:,:vocab_size-vocab_size_1]
-        final_probabilities = tf.concat((probabilities_by_distill, probabilities_by_class_and_batch), axis=1)
+
+        final_probabilities = tf.concat((probabilities_by_class_and_batch, probabilities_by_distill), axis=1)
+
+        final_probabilities = final_probabilities*FLAGS.ensemble_w + distill_labels*(1.0-FLAGS.ensemble_w)
 
         return {"predictions": final_probabilities}
+
+class MoeDistillSplit2Model(models.BaseModel):
+    """A softmax over a mixture of logistic models (with L2 regularization)."""
+
+    def create_model(self,
+                     model_input,
+                     vocab_size,
+                     distill_labels=None,
+                     num_mixtures=None,
+                     l2_penalty=1e-8,
+                     **unused_params):
+        """Creates a Mixture of (Logistic) Experts model.
+
+         The model consists of a per-class softmax distribution over a
+         configurable number of logistic classifiers. One of the classifiers in the
+         mixture is not trained, and always predicts 0.
+
+        Args:
+          model_input: 'batch_size' x 'num_features' matrix of input features.
+          vocab_size: The number of classes in the dataset.
+          num_mixtures: The number of mixtures (excluding a dummy 'expert' that
+            always predicts the non-existence of an entity).
+          l2_penalty: How much to penalize the squared magnitudes of parameter
+            values.
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          batch_size x num_classes.
+        """
+        num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+        bound = FLAGS.softmax_bound
+        vocab_size_1 = bound
+        class_size = 256
+        probabilities_by_distill = distill_labels[:,vocab_size_1:]
+        probabilities_by_residual = tf.clip_by_value(1.0-tf.reduce_sum(probabilities_by_distill,axis=1,keep_dims=True), 0.0, 1.0)
+        probabilities_by_distill_residual = tf.concat((probabilities_by_residual,probabilities_by_distill), axis=1)
+
+        class_input = slim.fully_connected(
+            probabilities_by_distill_residual,
+            class_size,
+            activation_fn=tf.nn.relu,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="class_inputs")
+        class_input = tf.nn.l2_normalize(class_input, dim=1)
+        model_input = tf.concat((model_input,class_input),axis=1)
+
+        gate_activations = slim.fully_connected(
+            model_input,
+            vocab_size_1 * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates")
+        expert_activations = slim.fully_connected(
+            model_input,
+            vocab_size_1 * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts")
+
+        gating_distribution = tf.nn.softmax(tf.reshape(
+            gate_activations,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution = tf.nn.sigmoid(tf.reshape(
+            expert_activations,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+        probabilities_by_class_and_batch = tf.reduce_sum(
+            gating_distribution[:, :num_mixtures] * expert_distribution, 1)
+        probabilities_by_class_and_batch = tf.reshape(probabilities_by_class_and_batch,
+                                                      [-1, vocab_size_1])
+
+        final_probabilities = tf.concat((probabilities_by_class_and_batch, probabilities_by_distill), axis=1)
+
+        final_probabilities = final_probabilities*FLAGS.ensemble_w + distill_labels*(1.0-FLAGS.ensemble_w)
+
+        return {"predictions": final_probabilities}
+
+class MoeDistillSplit3Model(models.BaseModel):
+    """A softmax over a mixture of logistic models (with L2 regularization)."""
+
+    def create_model(self,
+                     model_input,
+                     vocab_size,
+                     distill_labels=None,
+                     num_mixtures=None,
+                     l2_penalty=1e-8,
+                     **unused_params):
+        """Creates a Mixture of (Logistic) Experts model.
+
+         The model consists of a per-class softmax distribution over a
+         configurable number of logistic classifiers. One of the classifiers in the
+         mixture is not trained, and always predicts 0.
+
+        Args:
+          model_input: 'batch_size' x 'num_features' matrix of input features.
+          vocab_size: The number of classes in the dataset.
+          num_mixtures: The number of mixtures (excluding a dummy 'expert' that
+            always predicts the non-existence of an entity).
+          l2_penalty: How much to penalize the squared magnitudes of parameter
+            values.
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          batch_size x num_classes.
+        """
+        num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+        bound = FLAGS.softmax_bound
+        vocab_size_1 = bound
+        vocab_size_2 = vocab_size - vocab_size_1
+        class_size = 256
+        probabilities_by_distill = distill_labels[:,:vocab_size_1]
+        probabilities_by_residual = distill_labels[:,vocab_size_1:]
+        feature_size = model_input.get_shape().as_list()[1]
+
+        model_input = slim.fully_connected(
+            model_input,
+            feature_size,
+            activation_fn=tf.nn.relu,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="model_inputs")
+        model_input = tf.nn.l2_normalize(model_input, dim=1)
+
+        gate_activations_1 = slim.fully_connected(
+            model_input,
+            vocab_size_1 * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates-1")
+        expert_activations_1 = slim.fully_connected(
+            model_input,
+            vocab_size_1 * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts-1")
+        gating_distribution_1 = tf.nn.softmax(tf.reshape(
+            gate_activations_1,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution_1 = tf.nn.sigmoid(tf.reshape(
+            expert_activations_1,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+        probabilities_by_class_and_batch_1 = tf.reduce_sum(
+            gating_distribution_1[:, :num_mixtures] * expert_distribution_1, 1)
+        probabilities_by_class_and_batch_1 = tf.reshape(probabilities_by_class_and_batch_1,
+                                                      [-1, vocab_size_1])
+
+        probabilities_by_class = tf.concat((probabilities_by_class_and_batch_1, probabilities_by_residual), axis=1)
+
+        class_input = slim.fully_connected(
+            probabilities_by_distill,
+            class_size,
+            activation_fn=tf.nn.relu,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="class_inputs")
+        class_input = tf.nn.l2_normalize(class_input, dim=1)
+        model_input = tf.concat((model_input,class_input),axis=1)
+
+        gate_activations = slim.fully_connected(
+            model_input,
+            vocab_size_2 * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates")
+        expert_activations = slim.fully_connected(
+            model_input,
+            vocab_size_2 * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts")
+
+        gating_distribution = tf.nn.softmax(tf.reshape(
+            gate_activations,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution = tf.nn.sigmoid(tf.reshape(
+            expert_activations,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+        probabilities_by_class_and_batch = tf.reduce_sum(
+            gating_distribution[:, :num_mixtures] * expert_distribution, 1)
+        probabilities_by_class_and_batch = tf.reshape(probabilities_by_class_and_batch,
+                                                      [-1, vocab_size_2])
+
+        final_probabilities = tf.concat((probabilities_by_distill, probabilities_by_class_and_batch), axis=1)
+
+        final_probabilities = final_probabilities*FLAGS.ensemble_w + distill_labels*(1.0-FLAGS.ensemble_w)
+
+        return {"predictions": final_probabilities, "predictions_class": probabilities_by_class}
+
+class MoeDistillSplit4Model(models.BaseModel):
+    """A softmax over a mixture of logistic models (with L2 regularization)."""
+
+    def create_model(self,
+                     model_input,
+                     vocab_size,
+                     distill_labels=None,
+                     num_mixtures=None,
+                     l2_penalty=1e-8,
+                     **unused_params):
+        """Creates a Mixture of (Logistic) Experts model.
+
+         The model consists of a per-class softmax distribution over a
+         configurable number of logistic classifiers. One of the classifiers in the
+         mixture is not trained, and always predicts 0.
+
+        Args:
+          model_input: 'batch_size' x 'num_features' matrix of input features.
+          vocab_size: The number of classes in the dataset.
+          num_mixtures: The number of mixtures (excluding a dummy 'expert' that
+            always predicts the non-existence of an entity).
+          l2_penalty: How much to penalize the squared magnitudes of parameter
+            values.
+        Returns:
+          A dictionary with a tensor containing the probability predictions of the
+          model in the 'predictions' key. The dimensions of the tensor are
+          batch_size x num_classes.
+        """
+        num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
+        bound = FLAGS.softmax_bound
+        vocab_size_1 = bound
+        vocab_size_2 = vocab_size - vocab_size_1
+        class_size = 256
+        probabilities_by_distill = distill_labels[:,:vocab_size_1]
+        probabilities_by_residual = distill_labels[:,vocab_size_1:]
+
+        gate_activations_1 = slim.fully_connected(
+            model_input,
+            vocab_size_1 * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates-1")
+        expert_activations_1 = slim.fully_connected(
+            model_input,
+            vocab_size_1 * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts-1")
+        gating_distribution_1 = tf.nn.softmax(tf.reshape(
+            gate_activations_1,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution_1 = tf.nn.sigmoid(tf.reshape(
+            expert_activations_1,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+        probabilities_by_class_and_batch_1 = tf.reduce_sum(
+            gating_distribution_1[:, :num_mixtures] * expert_distribution_1, 1)
+        probabilities_by_class_and_batch_1 = tf.reshape(probabilities_by_class_and_batch_1,
+                                                        [-1, vocab_size_1])
+
+        probabilities_by_class = tf.concat((probabilities_by_class_and_batch_1, probabilities_by_residual), axis=1)
+
+        class_input = slim.fully_connected(
+            probabilities_by_distill,
+            class_size,
+            activation_fn=tf.nn.relu,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="class_inputs")
+        model_input = tf.concat((model_input,class_input),axis=1)
+
+        gate_activations = slim.fully_connected(
+            model_input,
+            vocab_size_2 * (num_mixtures + 1),
+            activation_fn=None,
+            biases_initializer=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="gates")
+        expert_activations = slim.fully_connected(
+            model_input,
+            vocab_size_2 * num_mixtures,
+            activation_fn=None,
+            weights_regularizer=slim.l2_regularizer(l2_penalty),
+            scope="experts")
+
+        gating_distribution = tf.nn.softmax(tf.reshape(
+            gate_activations,
+            [-1, num_mixtures + 1]))  # (Batch * #Labels) x (num_mixtures + 1)
+        expert_distribution = tf.nn.sigmoid(tf.reshape(
+            expert_activations,
+            [-1, num_mixtures]))  # (Batch * #Labels) x num_mixtures
+
+        probabilities_by_class_and_batch = tf.reduce_sum(
+            gating_distribution[:, :num_mixtures] * expert_distribution, 1)
+        probabilities_by_class_and_batch = tf.reshape(probabilities_by_class_and_batch,
+                                                      [-1, vocab_size_2])
+
+        final_probabilities = tf.concat((probabilities_by_distill, probabilities_by_class_and_batch), axis=1)
+
+        final_probabilities = final_probabilities*FLAGS.ensemble_w + distill_labels*(1.0-FLAGS.ensemble_w)
+
+        return {"predictions": final_probabilities, "predictions_class": probabilities_by_class}
 
 class MoeSoftmaxModel(models.BaseModel):
     """A softmax over a mixture of logistic models (with L2 regularization)."""

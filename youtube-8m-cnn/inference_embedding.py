@@ -58,10 +58,8 @@ if __name__ == '__main__':
         "batches VS 4D batches.")
     flags.DEFINE_bool(
         "norm", True,
-        "If set, then --train_data_pattern must be frame-level features. "
-        "Otherwise, --train_data_pattern must be aggregated video-level "
-        "features. The model must also be set appropriately (i.e. to read 3D "
-        "batches VS 4D batches.")
+        "If set, then --input_data should be l2-normalized before follow-up processing. "
+        "Otherwise, --input_data remain unchanged")
     flags.DEFINE_string(
         "model", "LogisticModel",
         "Which architecture to use for the model. Options include 'Logistic', "
@@ -74,7 +72,7 @@ if __name__ == '__main__':
                                                      "to use for training.")
     flags.DEFINE_string("feature_sizes", "1024", "Length of the feature vectors.")
     flags.DEFINE_integer("file_size", 4096,
-                         "Number of frames per batch for DBoF.")
+                         "Number of samples to be written into one tfrecord file.")
 
     # Other flags.
     flags.DEFINE_integer("num_readers", 1,

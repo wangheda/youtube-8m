@@ -55,10 +55,8 @@ if __name__ == "__main__":
       "batches VS 4D batches.")
   flags.DEFINE_bool(
       "norm", True,
-      "If set, then --train_data_pattern must be frame-level features. "
-      "Otherwise, --train_data_pattern must be aggregated video-level "
-      "features. The model must also be set appropriately (i.e. to read 3D "
-      "batches VS 4D batches.")
+      "If set, then --input_data should be l2-normalized before follow-up processing. "
+      "Otherwise, --input_data remain unchanged")
   flags.DEFINE_string(
       "model", "LogisticModel",
       "Which architecture to use for the model. Options include 'Logistic', "
@@ -67,7 +65,8 @@ if __name__ == "__main__":
   flags.DEFINE_integer("batch_size", 1024,
                        "How many examples to process per batch.")
   flags.DEFINE_integer("stride_size", 4,
-                       "How many examples to process per batch for training.")
+                       "How many frames to skip in frame level models, "
+                       "only used in LstmFramesModel and LstmSoftmaxModel")
   flags.DEFINE_string("label_loss", "CrossEntropyLoss",
                       "Loss computed on validation data")
 
@@ -202,7 +201,7 @@ def evaluation_loop(video_id_batch, prediction_batch, label_batch, loss,
   """
 
   global_step_val = -1
-  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
   with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     if FLAGS.model_checkpoint_path:
       checkpoint = FLAGS.model_checkpoint_path

@@ -22,21 +22,22 @@ flags.DEFINE_integer(
     "num_pairs", 10,
     "The number of pairs (excluding the dummy 'expert') used for Hingeloss.")
 flags.DEFINE_string("class_file", "./resources/labels_knowledge.out",
-                    "The directory to save the model files in.")
+                    "The directory to save the 24 top-level verticals in, used for 'calculate_loss_mix'")
 flags.DEFINE_string("frequent_file", "./resources/labels_frequent.out",
-                    "The directory to save the model files in.")
+                    "The directory to save the frequency of 4716 labels in, used only in early experiment.")
 flags.DEFINE_string("autoencoder_dir", "./resources/",
-                    "The directory to save the model files in.")
+                    "The directory to save the autoencoder model layers in.")
 flags.DEFINE_string("support_type", None,
-                    "The directory to save the model files in.")
+                    "The support type for mix models, options are None, class, frequent and encoder,"
+                    "used for 'calculate_loss_mix'.")
 flags.DEFINE_string("loss_function", None,
-                    "The directory to save the model files in.")
+                    "different loss funtions used in CrossEntropyLoss.")
 flags.DEFINE_integer("encoder_layers", 2,
-                     "The number of mixtures (excluding the dummy 'expert') used for MoeModel.")
+                     "The number of autoencoder layers.")
 flags.DEFINE_float("jsd_pi", 0.5,
-                   "Which learning rate to start with.")
+                   "wight used when loss function is loss_jsd.")
 flags.DEFINE_float("threshold", 0.5,
-                   "Which learning rate to start with.")
+                   "used only in early experiment.")
 
 class BaseLoss(object):
     """Inherit from this class when implementing new losses."""
