@@ -2,7 +2,7 @@ MODEL=InputExtendModel
 for part in test; do
     CUDA_VISIBLE_DEVICES=1 python inference_with_rebuild.py \
               --output_dir="/Youtube-8M/model_predictions/${part}/lstm2_attention8_max" \
-              --model_checkpoint_path="/home/zhangt/yt8m/frame_level_input_extend_model/model.ckpt-197005" \
+              --model_checkpoint_path="../model/frame_level_input_extend_model/model.ckpt-197005" \
               --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
               --frame_features=True \
               --feature_names="rgb,audio" \

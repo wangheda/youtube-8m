@@ -3,7 +3,7 @@ for part in ensemble_train ensemble_validate test; do
 #for part in ensemble_validate; do 
     CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble-distill.py \
 	      --output_dir="/Youtube-8M/model_predictions/${part}/distillchain_v2_lstm_gate_moe8" \
-          --model_checkpoint_path="/home/zhangt/yt8m/frame_level_lstm_gate_distillchain_v2_model/model.ckpt-73400" \
+          --model_checkpoint_path="../model/frame_level_lstm_gate_distillchain_v2_model/model.ckpt-73400" \
 	      --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
 	      --distill_data_pattern="/Youtube-8M/model_predictions/${part}/distillation/ensemble_v2_matrix_model/*.tfrecord" \
 	      --frame_features=True \
