@@ -31,7 +31,7 @@ Eval scripts for selecting best performing checkpoints
 > youtube-8m-wangheda/eval_scripts  
 > youtube-8m-zhangteng/eval_scripts  
 
-Infer scripts for generating intermedia files used by ensemble scripts
+Infer scripts for generating intermediate files used by ensemble scripts
 
 > youtube-8m-wangheda/infer_scripts  
 > youtube-8m-zhangteng/infer_scripts  
