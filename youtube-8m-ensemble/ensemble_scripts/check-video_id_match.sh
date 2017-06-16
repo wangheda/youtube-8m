@@ -1,7 +1,7 @@
 conf=$1
 part=$2
 
-validate_path=/Youtube-8M/model_predictions/${part}
+validate_path=/Youtube-8M/model_predictions_local/${part}
 validate_data_patterns=""
 for d in $(cat $conf); do
   validate_data_patterns="${validate_path}/${d}/*.tfrecord${validate_data_patterns:+,$validate_data_patterns}"

@@ -80,6 +80,8 @@ flags.DEFINE_integer("frame_seg_relu_cells", 256, "number of relu cells in frame
 
 flags.DEFINE_integer("distillchain_relu_cells", 256, "number of relu cells in distillchain model.")
 
+flags.DEFINE_integer("cnn_num_filters", 512, "number of filters in cnn conv layer.")
+
 import sys
 from os.path import dirname
 if dirname(__file__) not in sys.path:
