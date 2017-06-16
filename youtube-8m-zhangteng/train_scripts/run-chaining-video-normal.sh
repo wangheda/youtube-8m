@@ -1,6 +1,6 @@
 CUDA_VISIBLE_DEVICES=0 python train.py \
 		--train_data_pattern='/Youtube-8M/data/video/train/*.tfrecord' \
-		--train_dir='/home/zhangt/yt8m/video_level_moemix4_model' \
+		--train_dir='../model/video_level_moemix4_model' \
 		--model='MoeMix4Model' \
 		--feature_names="mean_rgb, mean_audio" \
 		--feature_sizes="1024, 128" \

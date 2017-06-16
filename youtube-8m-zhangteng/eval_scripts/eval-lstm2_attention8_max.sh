@@ -2,7 +2,7 @@
 GPU_ID=1
 EVERY=1000
 MODEL=InputExtendModel
-MODEL_DIR="/home/zhangt/yt8m/frame_level_input_extend_model"
+MODEL_DIR="../model/frame_level_input_extend_model"
 start=0
 DIR="$(pwd)"
 

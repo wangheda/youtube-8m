@@ -1,7 +1,7 @@
 GPU_ID=0
 EVERY=1000
 MODEL=MoeMix4Model
-MODEL_DIR="/home/zhangt/yt8m/video_level_moemix4_model"
+MODEL_DIR="../model/video_level_moemix4_model"
 start=0
 DIR="$(pwd)"
 

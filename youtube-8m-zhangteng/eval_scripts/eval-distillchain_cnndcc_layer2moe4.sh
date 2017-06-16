@@ -1,8 +1,8 @@
 GPU_ID=1
 EVERY=1000
 MODEL=CnnDCCDistillChainModel
-MODEL_DIR="/home/zhangt/yt8m/frame_level_cnndcc_distillchain_model"
-EVAL_DIR="/home/zhangt/yt8m/frame_level_cnndcc_distillchain_model"
+MODEL_DIR="../model/frame_level_cnndcc_distillchain_model"
+EVAL_DIR="../model/frame_level_cnndcc_distillchain_model"
 start=0
 DIR="$(pwd)"
 

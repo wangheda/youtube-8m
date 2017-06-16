@@ -1,7 +1,7 @@
 GPU_ID=1
 EVERY=1000
 MODEL=LstmExtendModel
-MODEL_DIR="/home/zhangt/yt8m/frame_level_lstm_extend8_model"
+MODEL_DIR="../model/frame_level_lstm_extend8_model"
 start=0
 DIR="$(pwd)"
 

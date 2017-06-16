@@ -2,7 +2,7 @@
 GPU_ID=1
 EVERY=1000
 MODEL=LstmMultiscaleModel
-MODEL_DIR="/home/zhangt/yt8m/frame_level_lstm_multiscale_model"
+MODEL_DIR="../model/frame_level_lstm_multiscale_model"
 start=0
 DIR="$(pwd)"
 

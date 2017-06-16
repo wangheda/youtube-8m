@@ -2,7 +2,7 @@
 GPU_ID=0
 EVERY=1000
 MODEL=MoeSoftmaxModel
-MODEL_DIR="/home/zhangt/yt8m/video_level_moesoftmax_model"
+MODEL_DIR="../model/video_level_moesoftmax_model"
 start=0
 DIR="$(pwd)"
 

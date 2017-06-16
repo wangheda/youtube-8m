@@ -1,7 +1,7 @@
 GPU_ID=0
 EVERY=1000
 MODEL=MoeKnowledgeModel
-MODEL_DIR="/home/zhangt/yt8m/video_level_moeknowledge_model"
+MODEL_DIR="../model/video_level_moeknowledge_model"
 start=0
 DIR="$(pwd)"
 
