@@ -10,8 +10,8 @@ class HalfVideoAugmenter:
            "HalfVideoAugmenter only works with frame feature")
     print "using HalfVideoAugmeter"
 
-    new_input_raw, new_labels_batch, new_num_frames = frame_augment(model_input_raw, num_frames, labels_batch)
-    new_float_frames = tf.cast(new_num_frames, tf.float32)
+    new_input_raw, new_labels_batch, new_num_frames = self.frame_augment(model_input_raw, num_frames, labels_batch)
+    new_float_frames = tf.expand_dims(tf.cast(new_num_frames, tf.float32), axis=1)
     aggregated_inputs = tf.reduce_sum(new_input_raw, axis=1) / new_float_frames
     return aggregated_inputs, new_labels_batch, new_num_frames
     
