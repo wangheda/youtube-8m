@@ -84,7 +84,7 @@ if [ $task == "train" ]; then
       --support_loss_percent=0.05 \
       --num_readers=4 \
       --batch_size=128 \
-      --num_epochs=2 \
+      --num_epochs=1 \
       --keep_checkpoint_every_n_hours=20 \
       --base_learning_rate=0.001
   fi
@@ -98,7 +98,7 @@ elif [ $task == "test-lstm" ]; then
     for part in ensemble_train ensemble_validate test; do
       infer_data_path="/Youtube-8M/model_predictions/${part}/${model_name}/${sub_model_name}"
       if [ ! -d $infer_data_path ]; then
-        predictions_data_pattern="/Youtube-8M/model_predictions_x32/${part}/distillation/ensemble_v2_matrix_model/*.tfrecord"
+        predictions_data_pattern="/Youtube-8M/model_predictions/${part}/distillation/ensemble_v2_matrix_model/*.tfrecord"
 
         echo predictions = "$predictions_data_pattern"
         CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble-with-predictions.py \
@@ -116,7 +116,7 @@ elif [ $task == "test-lstm" ]; then
           --lstm_layers=1 \
           --moe_num_mixtures=8 \
           --lstm_cells="1024,128" \
-          --batch_size=128 \
+          --batch_size=32 \
           --file_size=4096
       fi
     done
@@ -130,13 +130,13 @@ elif [ $task == "test-cnn" ]; then
     for part in ensemble_train ensemble_validate test; do
       infer_data_path="/Youtube-8M/model_predictions/${part}/${model_name}/${sub_model_name}"
       if [ ! -d $infer_data_path ]; then
-        predictions_data_pattern="/Youtube-8M/model_predictions_x32/${part}/distillation/ensemble_v2_matrix_model/*.tfrecord"
+        predictions_data_pattern="/Youtube-8M/model_predictions/${part}/distillation/ensemble_v2_matrix_model/*.tfrecord"
         for prev_model in distillchain_v2_lstmparalleloutput; do 
           predictions_data_pattern="${predictions_data_pattern},/Youtube-8M/model_predictions_local/${part}/${model_name}/${prev_model}/*.tfrecord"
         done
 
         echo predictions = "$predictions_data_pattern"
-        CUDA_VISIBLE_DEVICES=1 python inference-pre-ensemble-with-predictions.py \
+        CUDA_VISIBLE_DEVICES=0 python inference-pre-ensemble-with-predictions.py \
           --output_dir="$infer_data_path" \
           --train_dir="$sub_model_path" \
           --input_data_pattern="/Youtube-8M/data/frame/${part}/*.tfrecord" \
