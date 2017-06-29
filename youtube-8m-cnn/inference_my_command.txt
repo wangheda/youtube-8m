@@ -1,9 +1,0 @@
-CUDA_VISIBLE_DEVICES=1 python inference_my.py \
-	--output_dir='/Youtube-8M/model_predictions/ensemble_validate/video_level_moechain' \
-	--input_data_pattern='/Youtube-8M/data/video/ensemble_validate/*.tfrecord' \
-	--train_dir=/home/zhangt/yt8m/video_level_moemix4_model/group_moe \
-	--frame_features=False \
-	--feature_names="mean_rgb, mean_audio" \
-	--feature_sizes="1024, 128" \
-	--batch_size=1024 \
-	--file_size=4096

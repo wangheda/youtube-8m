@@ -23,4 +23,4 @@ CUDA_VISIBLE_DEVICES="$GPU_ID" python train.py \
       --model=LinearRegressionModel \
       --keep_checkpoint_every_n_hours=0.1 \
       --batch_size=1024 \
-      --num_epochs=4
+      --num_epochs=1

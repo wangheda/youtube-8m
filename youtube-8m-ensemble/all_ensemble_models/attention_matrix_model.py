@@ -50,9 +50,3 @@ class AttentionMatrixModel(models.BaseModel):
     # weighted output
     output = tf.reduce_sum(weight * model_input, axis=2)
     return {"predictions": output}
-
-
-
-
-    output = tf.einsum("ijk,ik->ij", model_input, gate_activations)
-    return {"predictions": output}

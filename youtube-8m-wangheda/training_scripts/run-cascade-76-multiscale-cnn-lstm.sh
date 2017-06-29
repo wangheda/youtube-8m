@@ -1,0 +1,22 @@
+CUDA_VISIBLE_DEVICES=0 python train.py \
+      --train_dir="../model/distillchain_v2_multiscale_cnnlstm" \
+      --train_data_pattern="/Youtube-8M/distillation_v2/frame/train/*.tfrecord" \
+      --frame_features=True \
+      --feature_names="rgb,audio" \
+      --feature_sizes="1024,128" \
+      --distillation_features=True \
+      --distillation_as_input=True \
+      --model=DistillchainMultiscaleCnnLstmModel \
+      --multiscale_cnn_lstm_layers=3 \
+      --moe_num_mixtures=4 \
+      --rnn_swap_memory=True \
+      --multitask=True \
+      --label_loss=MultiTaskCrossEntropyLoss \
+      --support_loss_percent=1.0 \
+      --support_type="label,label,label" \
+      --is_training=True \
+      --num_readers=4 \
+      --batch_size=128 \
+      --num_epochs=3 \
+      --base_learning_rate=0.001
+

@@ -1,0 +1,237 @@
+# Copyright 2016 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Binary for evaluating Tensorflow models on the YouTube-8M dataset."""
+
+import time
+
+import eval_util
+import losses
+import ensemble_level_models
+import readers
+import tensorflow as tf
+from tensorflow import app
+from tensorflow import flags
+from tensorflow import gfile
+from tensorflow import logging
+import utils
+
+FLAGS = flags.FLAGS
+
+if __name__ == "__main__":
+  # Dataset flags.
+  flags.DEFINE_string("model_checkpoint_path", "",
+                      "The file to load the model files from. ")
+  flags.DEFINE_string("train_dir", "/tmp/yt8m/",
+                      "The directory to write the result in. ")
+  flags.DEFINE_string(
+      "eval_data_patterns", "",
+      "File globs defining the evaluation dataset in tensorflow.SequenceExample format.")
+  flags.DEFINE_string(
+      "input_data_pattern", None,
+      "File globs for original model input.")
+  flags.DEFINE_string("feature_names", "predictions", "Name of the feature "
+                      "to use for training.")
+  flags.DEFINE_string("feature_sizes", "4716", "Length of the feature vectors.")
+
+  # Model flags.
+  flags.DEFINE_string(
+      "model", "LinearRegressionModel",
+      "Which architecture to use for the model.")
+  flags.DEFINE_integer("batch_size", 1024,
+                       "How many examples to process per batch.")
+  flags.DEFINE_string("label_loss", "CrossEntropyLoss",
+                      "Loss computed on validation data")
+
+  # Other flags.
+  flags.DEFINE_boolean("run_once", True, "Whether to run eval only once.")
+  flags.DEFINE_boolean("echo_gap", False, "Whether to echo GAP at the end.")
+  flags.DEFINE_integer("top_k", 20, "How many predictions to output per video.")
+
+def find_class_by_name(name, modules):
+  """Searches the provided modules for the named class and returns it."""
+  modules = [getattr(module, name, None) for module in modules]
+  return next(a for a in modules if a)
+
+
+def get_input_evaluation_tensors(reader,
+                                 data_pattern,
+                                 batch_size=256):
+  logging.info("Using batch size of " + str(batch_size) + " for evaluation.")
+  with tf.name_scope("eval_input"):
+    files = gfile.Glob(data_pattern)
+    if not files:
+      print data_pattern, files
+      raise IOError("Unable to find the evaluation files.")
+    logging.info("number of evaluation files: " + str(len(files)))
+    files.sort()
+    filename_queue = tf.train.string_input_producer(
+        files, shuffle=False, num_epochs=1)
+    eval_data = reader.prepare_reader(filename_queue)
+    return tf.train.batch(
+        eval_data,
+        batch_size=batch_size,
+        capacity=3 * FLAGS.batch_size,
+        allow_smaller_final_batch=True,
+        enqueue_many=True)
+
+
+def build_graph(all_readers,
+                input_reader,
+                input_data_pattern,
+                all_eval_data_patterns,
+                batch_size=256):
+
+  original_video_id, original_input, unused_labels_batch, unused_num_frames = (
+      get_input_evaluation_tensors(
+          input_reader,
+          input_data_pattern,
+          batch_size=batch_size))
+  
+  video_id_notequal_tensors = []
+  model_input_tensor = None
+  input_distance_tensors = []
+  for reader, data_pattern in zip(all_readers, all_eval_data_patterns):
+    video_id, model_input_raw, labels_batch, unused_num_frames = (
+        get_input_evaluation_tensors(
+            reader,
+            data_pattern,
+            batch_size=batch_size))
+    video_id_notequal_tensors.append(tf.reduce_sum(tf.cast(tf.not_equal(original_video_id, video_id), dtype=tf.float32)))
+    if model_input_tensor is None:
+      model_input_tensor = model_input_raw
+    input_distance_tensors.append(tf.reduce_mean(tf.reduce_sum(tf.square(model_input_tensor - model_input_raw), axis=1)))
+
+  video_id_mismatch_tensor = tf.stack(video_id_notequal_tensors)
+  input_distance_tensor = tf.stack(input_distance_tensors)
+  actual_batch_size = tf.shape(original_video_id)[0]
+
+  tf.add_to_collection("video_id_mismatch", video_id_mismatch_tensor)
+  tf.add_to_collection("input_distance", input_distance_tensor)
+  tf.add_to_collection("actual_batch_size", actual_batch_size)
+
+
+def check_loop(video_id_mismatch, input_distance, actual_batch_size, all_patterns):
+
+  count_mismatch = [0] * len(all_patterns)
+  sum_distance = [0.0] * len(all_patterns)
+
+  with tf.Session() as sess:
+    sess.run([tf.local_variables_initializer()])
+
+    # Start the queue runners.
+    start_time = time.time()
+    coord = tf.train.Coordinator()
+    try:
+      threads = []
+      for qr in tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS):
+        threads.extend(qr.create_threads(
+            sess, coord=coord, daemon=True,
+            start=True))
+
+      examples_processed = 0
+      j = 0
+      while not coord.should_stop():
+        batch_start_time = time.time()
+
+        video_id_mismatch_val, input_distance_val, batch_size_val = sess.run([video_id_mismatch, input_distance, actual_batch_size])
+        for i in xrange(len(all_patterns)):
+          count_mismatch[i] += int(video_id_mismatch_val[i])
+          sum_distance[i] += float(input_distance_val[i])
+
+        print "mismatch", count_mismatch
+
+        seconds_per_batch = time.time() - batch_start_time
+        example_per_second = batch_size_val / seconds_per_batch
+        examples_processed += batch_size_val
+
+        logging.info("examples_processed: %d, time elapsed %f s", examples_processed, time.time()-start_time)
+
+        j += 1
+        if j % 100 == 0:
+          print "---------------- SUMMARY -------------------"
+          print "COUNT \t DIST \t PATTERNS"
+          for i in xrange(len(all_patterns)):
+            print count_mismatch[i], "\t", sum_distance[i], "\t", all_patterns[i]
+
+    except tf.errors.OutOfRangeError as e:
+      logging.info(
+          "Done with batched inference. Now calculating global performance "
+          "metrics.")
+    except Exception as e:  # pylint: disable=broad-except
+      logging.info("Unexpected exception: " + str(e))
+      coord.request_stop(e)
+
+    coord.request_stop()
+    coord.join(threads, stop_grace_period_secs=10)
+
+    print "---------------- FINAL SUMMARY -------------------"
+    print "COUNT \t DIST \t PATTERNS"
+    for i in xrange(len(all_patterns)):
+      print count_mismatch[i], "\t", sum_distance[i], "\t", all_patterns[i]
+
+
+def check_video_id():
+  tf.set_random_seed(0)  # for reproducibility
+  with tf.Graph().as_default():
+    # convert feature_names and feature_sizes to lists of values
+    feature_names, feature_sizes = utils.GetListOfFeatureNamesAndSizes(
+        FLAGS.feature_names, FLAGS.feature_sizes)
+
+    # prepare a reader for each single model prediction result
+    all_readers = []
+
+    all_patterns = FLAGS.eval_data_patterns
+    all_patterns = map(lambda x: x.strip(), all_patterns.strip().strip(",").split(","))
+    for i in xrange(len(all_patterns)):
+      reader = readers.EnsembleReader(
+          feature_names=feature_names, feature_sizes=feature_sizes)
+      all_readers.append(reader)
+
+    input_reader = None
+    input_data_pattern = None
+    if FLAGS.input_data_pattern is not None:
+      input_reader = readers.EnsembleReader(
+          feature_names=["mean_rgb","mean_audio"], feature_sizes=[1024,128])
+#      input_reader = readers.EnsembleReader(
+#          feature_names=["input"], feature_sizes=[1024+128])
+      input_data_pattern = FLAGS.input_data_pattern
+
+    if FLAGS.eval_data_patterns is "":
+      raise IOError("'eval_data_patterns' was not specified. " +
+                     "Nothing to evaluate.")
+
+    build_graph(
+        all_readers=all_readers,
+        input_reader=input_reader,
+        input_data_pattern=input_data_pattern,
+        all_eval_data_patterns=all_patterns,
+        batch_size=FLAGS.batch_size)
+
+    logging.info("built evaluation graph")
+    video_id_mismatch = tf.get_collection("video_id_mismatch")[0]
+    input_distance = tf.get_collection("input_distance")[0]
+    actual_batch_size = tf.get_collection("actual_batch_size")[0]
+
+    check_loop(video_id_mismatch, input_distance, actual_batch_size, all_patterns)
+
+
+def main(unused_argv):
+  logging.set_verbosity(tf.logging.INFO)
+  print("tensorflow version: %s" % tf.__version__)
+  check_video_id()
+
+
+if __name__ == "__main__":
+  app.run()
+

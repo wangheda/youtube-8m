@@ -1,0 +1,24 @@
+
+CUDA_VISIBLE_DEVICES=0 python train.py \
+	--train_dir="../model/dataaugmentation_chaining_lstm/" \
+	--train_data_pattern="/Youtube-8M/data/frame/largetrain/*.tfrecord" \
+	--model=LstmMemoryDeepChainModel \
+	--moe_num_mixtures=4 \
+	--deep_chain_relu_cells=200 \
+	--deep_chain_layers=1 \
+	--frame_features=True \
+	--feature_names="rgb,audio" \
+	--feature_sizes="1024,128" \
+	--lstm_layers=2 \
+	--lstm_cells=1024 \
+	--multitask=True \
+	--support_type="label" \
+	--num_supports=4716 \
+	--label_loss=MultiTaskCrossEntropyLoss \
+	--base_learning_rate=0.0008 \
+	--support_loss_percent=0.2 \
+	--keep_checkpoint_every_n_hours=3.0 \
+	--rnn_swap_memory=True \
+   	--num_epochs=4 \
+        --data_augmenter=HalfAugmenter \
+	--batch_size=40

@@ -1,0 +1,12 @@
+CUDA_VISIBLE_DEVICES=1 python train.py \
+		--train_data_pattern='/Youtube-8M/distillation/video/train/*.tfrecord' \
+		--train_dir='../model/video_level_distillchainnorm2_model' \
+		--frame_features=False \
+		--feature_names="mean_rgb, mean_audio" \
+		--feature_sizes="1024, 128" \
+		--model='MoeDistillChainNorm2Model' \
+		--moe_num_mixtures=8 \
+		--batch_size=128 \
+		--base_learning_rate=0.001 \
+		--distillation_features=True \
+		--distillation_type=0

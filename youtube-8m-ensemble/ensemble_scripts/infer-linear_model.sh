@@ -1,5 +1,6 @@
 model=$1
 conf=$2
+checkpoint=$3
 
 DEFAULT_GPU_ID=0
 if [ -z ${CUDA_VISIBLE_DEVICES+x} ]; then
@@ -18,7 +19,7 @@ done
 echo "$test_data_patterns"
 
 CUDA_VISIBLE_DEVICES=${GPU_ID} python inference.py \
-      --model_checkpoint_path="../model/${model}/model.ckpt-2177" \
-      --output_file="../model/${model}/predictions.${model}.csv" \
+      --model_checkpoint_path="../model/${model}/model.ckpt-$checkpoint" \
+      --output_file="../model/${model}/predictions.csv" \
       --model="LinearRegressionModel" \
       --input_data_patterns="$test_data_patterns"

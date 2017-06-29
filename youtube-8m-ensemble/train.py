@@ -219,6 +219,15 @@ def build_graph(all_readers,
       staircase=True)
   tf.summary.scalar('learning_rate', learning_rate)
 
+  original_input = None
+  if input_data_pattern is not None:
+    original_video_id, original_input, unused_labels_batch, unused_num_frames = (
+        get_input_data_tensors(
+            input_reader,
+            input_data_pattern,
+            batch_size=batch_size,
+            num_epochs=num_epochs))
+  
   optimizer = optimizer_class(learning_rate)
   model_input_raw_tensors = []
   labels_batch_tensor = None
@@ -232,16 +241,12 @@ def build_graph(all_readers,
     if labels_batch_tensor is None:
       labels_batch_tensor = labels_batch
     model_input_raw_tensors.append(tf.expand_dims(model_input_raw, axis=2))
+    
+    if original_input is not None:
+      id_match = tf.ones_like(original_video_id, dtype=tf.float32)
+      id_match = id_match * tf.cast(tf.equal(original_video_id, video_id), dtype=tf.float32)
+      tf.summary.scalar("model/id_match", tf.reduce_mean(id_match))
 
-  original_input = None
-  if input_data_pattern is not None:
-    unused_video_id, original_input, unused_labels_batch, unused_num_frames = (
-        get_input_data_tensors(
-            input_reader,
-            input_data_pattern,
-            batch_size=batch_size,
-            num_epochs=num_epochs))
-  
   model_input = tf.concat(model_input_raw_tensors, axis=2)
   labels_batch = labels_batch_tensor
   tf.summary.histogram("model/input", model_input)
@@ -280,6 +285,9 @@ def build_graph(all_readers,
       video_weights_batch = None
       if FLAGS.reweight:
         video_weights_batch = get_video_weights(video_id)
+      else:
+        video_weights_batch = None
+
       if FLAGS.multitask:
         print "using multitask loss"
         support_predictions = result["support_predictions"]
