@@ -164,7 +164,7 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
 
     try:
       while not coord.should_stop():
-          video_id_batch_val, video_batch_val,num_frames_batch_val = sess.run([video_id_batch, video_batch, num_frames_batch])
+          video_id_batch_val, video_batch_val, num_frames_batch_val = sess.run([video_id_batch, video_batch, num_frames_batch])
           if FLAGS.dropout:
             predictions_val, = sess.run([predictions_tensor], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val, keep_prob_tensor: FLAGS.keep_prob})
           else:
