@@ -150,6 +150,8 @@ def build_graph(reader,
         FLAGS.distill_data_pattern,
         batch_size=batch_size)
 
+  actual_batch_size = tf.shape(model_input_raw)[0]
+
   data_augmenter = augmenter_class()
   model_input_raw, labels_batch, num_frames = data_augmenter.augment(model_input_raw, num_frames=num_frames, labels_batch=labels_batch)
 
@@ -191,7 +193,7 @@ def build_graph(reader,
 
     print "result", result
     predictions = result["predictions"]
-    predictions = tf.reshape(predictions, [-1, batch_size, reader.num_classes])
+    predictions = tf.reshape(predictions, [-1, actual_batch_size, reader.num_classes])
     predictions = tf.reduce_mean(predictions, axis=0)
 
     tf.add_to_collection("predictions", predictions)
