@@ -13,7 +13,7 @@ GNU Bash
 
 For an understanding of our system, read the report of our solution: 
 
-> http://msiip.tsinghua.edu.cn/papers/youtube-8m-challenge.pdf
+> https://arxiv.org/abs/1706.05150
 
 Our source code:
 
